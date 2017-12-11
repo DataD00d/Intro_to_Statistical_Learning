@@ -1,0 +1,279 @@
+from pyspark.sql import SQLContext
+from pyspark.sql.types import DoubleType
+import pyspark
+import datetime
+sc = pyspark.SparkContext()
+sqlCtx = SQLContext(sc)
+
+#process id ps672610 / ImPyHa2017
+import pyodbc #required "pip" and "pip3" two commands in terminal: 1 - !pip install pyodbc and 2 - !pip3 install pyodbc
+cnxn = pyodbc.connect("Driver=/opt/cloudera/impalaodbc/lib/64/libclouderaimpalaodbc64.so;HOST=drona-impala.cargill.com;TrustedCerts=/opt/cloudera/impalaodbc/lib/64/cacerts.pem;CAIssuedCertNamesMismatch=1;AllowSelfSignedServerCert=1;SSL=1;KrbServiceName=impala;PORT=21050;KrbFQDN=_HOST;AuthMech=3;UseSASL=1;UseNativeQuery=0;autocommit=0;KrbFQDN=_HOST;UID=c675827@NA.CORP.CARGILL.COM;PWD=P1gBl0b!",autocommit=True)
+cursor = cnxn.cursor()
+
+from datetime import date
+from email.mime.text import MIMEText
+import smtplib, email.utils
+
+
+#SET ENVIRONMENT / DB FOR GREENFEED ADMIN TABLES
+db = "dev_product_ctl_staging"
+
+#CHECK FOR PENDING FILE IN HDFS
+#---------------------------------------------------------------------------
+sqlcode = "INSERT OVERWRITE TABLE " + db + ".greenfeed_batch SELECT * FROM " + db + ".greenfeed_batch_raw"
+sqlCtx.sql(sqlcode)
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_batch"
+cursor.execute(sqlcode)
+
+sqlcode = "SELECT batch_id, input_file_name, datafile_id, updated FROM " + db + ".greenfeed_batch_vw WHERE status = 'pending' LIMIT 1"
+pending_file = sqlCtx.sql(sqlcode)
+tmplst = [x["datafile_id"] for x in pending_file.rdd.collect()]
+data_file_id = str(tmplst).strip("['']")
+
+tmplst = [x["batch_id"] for x in pending_file.rdd.collect()]
+batch_id = str(tmplst).strip("['']")
+
+tmplst = [x["input_file_name"] for x in pending_file.rdd.collect()]
+file_name = str(tmplst).strip("['']")
+
+time_stamp = datetime.datetime.now()
+if data_file_id == "":
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('No file detected', '" + str(time_stamp) + "')"
+  sqlCtx.sql(sqlcode)
+  sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+  cursor.execute(sqlcode)
+  sqlcode = "COMPUTE STATS " + db + ".greenfeed_log"
+  cursor.execute(sqlcode)
+  quit()
+else:
+  status = "Successful"
+  log = "Batch_id: " + batch_id + " detected for file: " + file_name + ". Mailroom process initiated with data_file_id: " + data_file_id
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+  sqlCtx.sql(sqlcode)
+  sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+  cursor.execute(sqlcode)
+  sqlcode = "COMPUTE STATS " + db + ".greenfeed_log"
+  cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#SET FILE DETAILS
+#---------------------------------------------------------------------------
+sqlcode = "SELECT datasteward_id, datavalidation_id, datatransformation_id, raw_db, raw_table, clean_db, clean_table, kudu_db, kudu_table FROM " + db + ".greenfeed_datafiles_vw WHERE datafile_id = " + data_file_id + " AND active = 'y' ORDER BY updated DESC LIMIT 1"
+file_details = sqlCtx.sql(sqlcode)
+tmplst = [x["datasteward_id"] for x in file_details.rdd.collect()]
+data_steward_id = str(tmplst).strip("['']")
+
+tmplst = [x["datavalidation_id"] for x in file_details.rdd.collect()]
+data_validation_id = str(tmplst).strip("['']")
+
+tmplst = [x["datatransformation_id"] for x in file_details.rdd.collect()]
+data_transformation_id = str(tmplst).strip("['']")
+
+tmplst = [x["raw_db"] for x in file_details.rdd.collect()]
+raw_db = str(tmplst).strip("['']")
+
+tmplst = [x["raw_table"] for x in file_details.rdd.collect()]
+raw_table = str(tmplst).strip("['']")
+
+tmplst = [x["clean_db"] for x in file_details.rdd.collect()]
+clean_db = str(tmplst).strip("['']")
+
+tmplst = [x["clean_table"] for x in file_details.rdd.collect()]
+clean_table = str(tmplst).strip("['']")
+
+tmplst = [x["kudu_db"] for x in file_details.rdd.collect()]
+kudu_db = str(tmplst).strip("['']")
+
+tmplst = [x["kudu_table"] for x in file_details.rdd.collect()]
+kudu_table = str(tmplst).strip("['']")
+
+sqlcode = "SELECT datasteward_name, datasteward_email FROM " + db + ".greenfeed_datastewards_vw WHERE datasteward_id = " + data_steward_id + " AND active = 'y'"
+steward_detail = sqlCtx.sql(sqlcode)
+tmplst = [x["datasteward_name"] for x in steward_detail.rdd.collect()]
+steward_name = str(tmplst).strip("[]")
+steward_name = steward_name.replace("'", '')
+
+steward_email = [x["datasteward_email"] for x in steward_detail.rdd.collect()]
+
+sqlcode = "SELECT datasteward_email FROM " + db + ".greenfeed_datastewards_vw WHERE datasteward_id = 0 AND active = 'y'"
+admin_detail = sqlCtx.sql(sqlcode)
+admin_email = [x["datasteward_email"] for x in admin_detail.rdd.collect()]
+
+sqlcode = "SELECT sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step = 1 ORDER BY updated DESC LIMIT 1"
+tmpsql = sqlCtx.sql(sqlcode)
+tmplst = [x["sql"] for x in tmpsql.rdd.collect()]
+impala_insert = str(tmplst).strip("['']")
+
+sqlcode = "SELECT sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step = 2 ORDER BY updated DESC LIMIT 1"
+tmpsql = sqlCtx.sql(sqlcode)
+tmplst = [x["sql"] for x in tmpsql.rdd.collect()]
+kudu_insert = str(tmplst).strip("['']")
+
+sqlcode = "SELECT test_description, sql FROM " + db + ".greenfeed_datavalidation_vw WHERE datavalidation_id = " + data_validation_id + " AND active = 'y'"
+validation = sqlCtx.sql(sqlcode)
+val_sql = [x["sql"] for x in validation.rdd.collect()]
+val_tst = [x["test_description"] for x in validation.rdd.collect()]
+
+time_stamp = datetime.datetime.now()
+if raw_db == "" or raw_table == "" or clean_db == "" or clean_table == "" or kudu_db == "" or kudu_table == "" or file_name == "" or steward_name == "" or steward_email == "" or impala_insert == "" or kudu_insert == "":
+  status = "Invalid file configuration"
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Invalid file configuration - Review greenfeed admin tables', '" + str(time_stamp) + "')"
+  sqlCtx.sql(sqlcode)
+else:
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('File configuration successful', '" + str(time_stamp) + "')"
+  sqlCtx.sql(sqlcode)
+  
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#INSERT TO PARQUET
+#---------------------------------------------------------------------------
+if status == "Successful":
+  time_stamp = datetime.datetime.now()
+  try:
+    impala_insert = impala_insert.replace("~SQ~", "'")
+    impala_insert = impala_insert.replace("~FILENAME~", file_name)
+    sqlCtx.sql(impala_insert)
+    sqlcode = "INVALIDATE METADATA " + clean_db + "." + clean_table
+    cursor.execute(sqlcode)
+    
+    #VERIFY SOME DATA FOUND
+    #-----------------------------------------
+    sqlcode = "SELECT COUNT(*) as records FROM " + clean_db + "." + clean_table
+    tmplst = sqlCtx.sql(sqlcode)
+    records = [x["records"] for x in tmplst.rdd.collect()]
+    records = str(records).strip("['']")
+    
+    if records == '0':
+      status = "Data Validation Fail"
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('No data found following insert into: " + clean_db + "." + clean_table + "', '" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+      val_notes = "* No data found in table " + clean_db + "." + clean_table + "following impala insert. Please carefully review the file name provided for this file: " + file_name
+    else:
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Parquet Successful', '" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+    #-------------------------------------------
+
+  except Exception as whoopsies:
+    status = "Error"
+    log_error = whoopsies.args[0]
+    log = "Error on Insert to Parquet - " + log_error.replace("'", "")
+    log = log.replace("`", "")
+    sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+    sqlCtx.sql(sqlcode)
+    
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#UPSERT TO KUDU
+#---------------------------------------------------------------------------
+if status == "Successful":
+  if kudu_table == "N/A":
+    sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Kudu Not Applicable', '" + str(time_stamp) + "')"
+    sqlCtx.sql(sqlcode)
+  else:
+    time_stamp = datetime.datetime.now()
+    try:
+      cursor.execute(kudu_insert)
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Kudu successful', '" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+    except Exception as whoopsies:
+      status = "Error"
+      log_error = whoopsies.args[0]
+      log = "Error on Insert to Kudu - " + log_error
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+    
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#DATA VALIDATIONS
+#---------------------------------------------------------------------------
+if status == "Successful":
+  for i in val_sql:
+    time_stamp = datetime.datetime.now()
+    sqlcode = str(i).strip("['']")
+    sqlcode = sqlcode.replace("~SQ~", "'")
+    test = val_tst(i).strip("['']")
+  
+    try:
+      pass_fail = sqlCtx.sql(sqlcode)
+      
+      if pass_fail == "PASS":
+        val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed. sqlcode + " + sqlcode
+        log = "data validation check " + test + " Passed. sql code for test: "  + sqlcode
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"','" + str(time_stamp) + "')"
+        sqlCtx.sql(sqlcode)
+      else:
+        status = "Data Validation Fail"
+        val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed. sqlcode + " + sqlcode
+        log = "data validation check " + test + " Failed. sql code for test: "  + sqlcode
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+        sqlCtx.sql(sqlcode)
+        
+    except Exception as whoopsies:
+      status = "Error"
+      log_error = whoopsies.args[0]
+      log = "Error on data validation check - " + test +" - " + log_error
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+      
+    sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+    cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#UPDATE BATCH STATUS
+#---------------------------------------------------------------------------
+time_stamp = datetime.datetime.now()
+sqlcode = "INSERT INTO " + db + ".greenfeed_batch_raw VALUES('" + batch_id + "', '" + file_name + "', '" + data_file_id + "', '" + status + "', '" + str(time_stamp) + "')"
+sqlCtx.sql(sqlcode)
+#---------------------------------------------------------------------------
+
+
+#SEND EMAIL NOTIFICATION
+#---------------------------------------------------------------------------
+smtp_server = "mailrelayapp.na.corp.cargill.com"
+
+if status == "Invalid file configuration" or status == "Error":
+  full_group = steward_email + admin_email
+  email_group = []
+  [email_group.append(x) for x in full_group if x not in email_group]
+else:
+  email_group = steward_email
+  
+email_to = email_group
+email_from = "ctl_pdt@cargill.com"
+email_subject = "GreenFeed Submission " + status + " for file: " + file_name
+
+#date_format = "%Y/%m/%d"
+email_space = ", "
+
+if status == "Successful":
+  data = "Your file submission has been successfully processed into the CTL data lake, location: " + kudu_db + "." + kudu_table
+elif status == "Error":
+  data = "Your file submission has failed to load due to the exception noted below. The CTL data and analytics team will review the issue as soon as possible. " + '\n' + '\n' + log_error
+elif status == "Invalid file configuration":
+  data = "Your file submission has failed to load due to an incorrect or incomplete configuration. The CTL data and analytics team will review the issue as soon as possible."
+elif status == "Data Validation Fail":
+  data = "Your file submission has been processed into the CTL data lake, location: " + kudu_db + "." + kudu_table + "." + '\n' + " However, potential data validation issues have been detected, documented below. Please review the file and if required, provide an updated file. If the file is deemed appropriate then no action is required." +'\n' + '\n' + val_notes
+
+msg = MIMEText(data)
+msg['Subject'] = email_subject #+ " %s" % (date.today().strftime(date_format))
+msg['To'] = email_space.join(email_to)
+msg['From'] = email_from
+
+mail = smtplib.SMTP()
+mail.connect(smtp_server)
+mail.sendmail(email_from,email_to,msg.as_string())
+mail.quit()
+#---------------------------------------------------------------------------
+
+quit()
