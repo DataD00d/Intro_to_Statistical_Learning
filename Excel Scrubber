@@ -119,6 +119,10 @@ If Range("RunList").Offset(i, 0) = "Y" Then
     
     Loop
     
+    DisplayAlerts = False
+    data_wb.Close
+    DisplayAlerts = True
+    
     'Move original file to archive
     Dim FSO As Object
     Set FSO = CreateObject("Scripting.Filesystemobject")
