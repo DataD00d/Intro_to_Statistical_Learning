@@ -1,0 +1,136 @@
+Sub scrubfiles()
+
+Dim admin_wb As Workbook
+Set admin_wb = ThisWorkbook
+
+Do Until Range("RunList").Offset(i, 0) = ""
+
+If Range("RunList").Offset(i, 0) = "Y" Then
+
+    excel_id = Range("RunList").Offset(i, -1)
+    file_pre = Range("RunList").Offset(i, 1)
+    file_path = Range("RunList").Offset(i, 2)
+    archive_path = Range("RunList").Offset(i, 3)
+    
+    file_name = Dir(file_path & "\" & file_pre & "*")
+
+    Dim data_wb As Workbook
+    Workbooks.Open Filename:=file_path & "\" & file_name
+    Set data_wb = ActiveWorkbook
+    file_date = FileDateTime(file_path & "\" & file_name)
+    
+    'format file date for mailroom
+    file_year = Year(file_date)
+    
+    If Len(Month(file_date)) = 1 Then
+        file_month = "0" & Month(file_date)
+        Else
+        file_month = Month(file_date)
+    End If
+    
+    If Len(Day(file_date)) = 1 Then
+        file_day = "0" & Day(file_date)
+        Else
+        file_day = Day(file_date)
+    End If
+    
+    If Len(Hour(file_date)) = 1 Then
+        file_hour = "0" & Hour(file_date)
+        Else
+        file_hour = Hour(file_date)
+    End If
+    
+    If Len(Minute(file_date)) = 1 Then
+        file_minute = "0" & Minute(file_date)
+        Else
+        file_minute = Minute(file_date)
+    End If
+    
+    If Len(Second(file_date)) = 1 Then
+        file_second = "0" & Second(file_date)
+        Else
+        file_second = Second(file_date)
+    End If
+    
+    admin_wb.Activate
+    y = 0
+    Do Until Range("SheetLists").Offset(y, 0) = ""
+    
+        If Range("SheetLists").Offset(y, 0) = excel_id Then
+        
+            sheet_id = Range("SheetLists").Offset(y, 1)
+            sheet_name = Range("SheetLists").Offset(y, 2)
+            mailroom_id = Range("SheetLists").Offset(y, 3)
+            
+            'First clear away commas for csv
+            data_wb.Activate
+            Dim fndList As Variant
+            Dim rplcList As Variant
+            
+            fndList = Array(",")
+            rplcList = Array("")
+
+            For aa = LBound(fndList) To UBound(fndList)
+                Sheets(sheet_name).Cells.Replace What:=fndList(aa), Replacement:=rplcList(aa), _
+                LookAt:=xlPart, SearchOrder:=xlByRows, MatchCase:=False, _
+                SearchFormat:=False, ReplaceFormat:=False
+            Next aa
+            
+            'Next run through additional transformation steps
+            Z = 0
+            admin_wb.Activate
+            Do Until Range("TransList").Offset(Z, 0) = ""
+                If Range("TransList").Offset(Z, 0) = excel_id And Range("TransList").Offset(Z, 1) = sheet_id Then
+                    Transformation = Range("TransList").Offset(Z, 2)
+                    data_wb.Sheets(sheet_name).Activate
+                    
+                    '---------------------VBA STRING TO CODE----------------------------------
+                    'NOTE - must add Microsoft Visual Basic For Applications Extensibility library in VBE -> Tools -> References
+                    Dim LineNum As Long
+                    Set VBComp = ThisWorkbook.VBProject.VBComponents.Add(vbext_ct_StdModule)
+                    VBComp.Name = "NewModule"
+                    'add the code lines
+                    Set VBCodeMod = ThisWorkbook.VBProject.VBComponents("NewModule").CodeModule
+                    With VBCodeMod
+                        LineNum = .CountOfLines + 1
+                        .InsertLines LineNum, _
+                        "Sub MyNewProcedure()" & Chr(13) & _
+                        Transformation & Chr(13) & _
+                        "End Sub"
+                    End With
+
+                    'run the new module
+                    Application.Run "MyNewProcedure"
+                    'remove the new module
+                    ThisWorkbook.VBProject.VBComponents.Remove VBComp
+                    '-------------------------------------------------------------------------
+
+                    admin_wb.Activate
+                End If
+        
+                Z = Z + 1
+            Loop
+            
+            'Save Mailroom file
+            data_wb.SaveAs Filename:=archive_path & "\" & mailroom_id & "-" & file_year & file_month & file_day & file_hour & file_minute & file_second, FileFormat:=xlCSV
+        End If
+    
+        y = y + 1
+    
+    Loop
+    
+    'Move original file to archive
+    Dim FSO As Object
+    Set FSO = CreateObject("Scripting.Filesystemobject")
+    FSO.MoveFile Source:=file_path & "\" & file_name, Destination:=archive_path & "\" & file_name
+
+Else
+
+End If
+
+    i = i + 1
+
+Loop
+
+
+End Sub
