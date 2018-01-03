@@ -3,14 +3,18 @@ Sub scrubfiles()
 Dim admin_wb As Workbook
 Set admin_wb = ThisWorkbook
 
+Dim FSO As Object
+Set FSO = CreateObject("Scripting.Filesystemobject")
+
 Do Until Range("RunList").Offset(i, 0) = ""
 
 If Range("RunList").Offset(i, 0) = "Y" Then
 
     excel_id = Range("RunList").Offset(i, -1)
     file_pre = Range("RunList").Offset(i, 1)
-    file_path = Range("RunList").Offset(i, 2)
-    archive_path = Range("RunList").Offset(i, 3)
+    file_path = Range("File_Intake")
+    archive_path = Range("Archive")
+    MailRoom = Range("Mailroom_Dropzone")
     
     file_name = Dir(file_path & "\" & file_pre & "*")
 
@@ -63,7 +67,9 @@ If Range("RunList").Offset(i, 0) = "Y" Then
             mailroom_id = Range("SheetLists").Offset(y, 3)
             
             'First clear away commas for csv
-            data_wb.Activate
+            data_wb.Sheets(sheet_name).Activate
+            row_count = Application.WorksheetFunction.CountA(Range("A:A")) + 1
+            
             Dim fndList As Variant
             Dim rplcList As Variant
             
@@ -82,6 +88,7 @@ If Range("RunList").Offset(i, 0) = "Y" Then
             Do Until Range("TransList").Offset(Z, 0) = ""
                 If Range("TransList").Offset(Z, 0) = excel_id And Range("TransList").Offset(Z, 1) = sheet_id Then
                     Transformation = Range("TransList").Offset(Z, 2)
+                    Transformation = Replace(Transformation, "{start_row}", row_count)
                     data_wb.Sheets(sheet_name).Activate
                     
                     '---------------------VBA STRING TO CODE----------------------------------
@@ -112,7 +119,15 @@ If Range("RunList").Offset(i, 0) = "Y" Then
             Loop
             
             'Save Mailroom file
-            data_wb.SaveAs Filename:=archive_path & "\" & mailroom_id & "-" & file_year & file_month & file_day & file_hour & file_minute & file_second, FileFormat:=xlCSV
+            data_wb.SaveAs Filename:=MailRoom & "\" & mailroom_id & "-" & file_year & file_month & file_day & file_hour & file_minute & file_second, FileFormat:=xlCSV
+            
+            'Move to edgenode
+            cmd = "cmd.exe /c cmd < \\ADMPLS257M\admptldata\_private\Analytics\Jordan\Mailroom\Tool\Move_to_edgenode.ps1"
+            ret = Shell(cmd, vbHide)
+            
+            'Archive CSV
+            FSO.MoveFile Source:=MailRoom & "\" & mailroom_id & "-" & file_year & file_month & file_day & file_hour & file_minute & file_second & ".csv", Destination:=archive_path & "\" & mailroom_id & "-" & file_year & file_month & file_day & file_hour & file_minute & file_second & ".csv"
+            
         End If
     
         y = y + 1
@@ -124,8 +139,6 @@ If Range("RunList").Offset(i, 0) = "Y" Then
     DisplayAlerts = True
     
     'Move original file to archive
-    Dim FSO As Object
-    Set FSO = CreateObject("Scripting.Filesystemobject")
     FSO.MoveFile Source:=file_path & "\" & file_name, Destination:=archive_path & "\" & file_name
 
 Else
