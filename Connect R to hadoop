@@ -1,0 +1,34 @@
+install.packages("DBI", dep = TRUE)
+install.packages("rJava", dep = TRUE)
+install.packages("RJDBC", dep = TRUE)
+
+library(DBI)
+library(rJava)
+library(RJDBC)
+
+jdbc_path = '/home/cdsw/R_JDBC_Drivers/'
+cp <- c(
+   paste0(jdbc_path, "commons-codec-1.3.jar"),
+   paste0(jdbc_path, "commons-logging-1.1.1.jar"),
+   paste0(jdbc_path, "hive_metastore.jar"),
+   paste0(jdbc_path, "hive_service.jar"),
+   paste0(jdbc_path, "httpclient-4.1.3.jar"),
+   paste0(jdbc_path, "httpcore-4.1.3.jar"),
+   paste0(jdbc_path, "libfb303-0.9.0.jar"),
+   paste0(jdbc_path, "libthrift-0.9.0.jar"),
+   paste0(jdbc_path, "log4j-1.2.14.jar"),
+   paste0(jdbc_path, "ql.jar"),
+   paste0(jdbc_path, "slf4j-api-1.5.11.jar"),
+   paste0(jdbc_path, "slf4j-log4j12-1.5.11.jar"),
+   paste0(jdbc_path, "TCLIServiceClient.jar"),
+   paste0(jdbc_path, "zookeeper-3.4.6.jar")
+)
+.jinit(classpath<-cp)
+
+drv <- JDBC("com.cloudera.impala.jdbc4.Driver", "/home/cdsw/R_JDBC_Drivers/ImpalaJDBC4.jar")
+con <- dbConnect(drv, "jdbc:impala://drona-impala.cargill.com:21050;AuthMech=3;SSL=1;AllowSelfSignedCerts=1;" , "ps672610@na.corp.cargill.com" , "PyImHa2017")
+
+Then you can do stuff like this:
+
+qry <- "SELECT * FROM dev_product_ctl_staging.greenfeed_datafiles"
+mydata <- dbGetQuery(con, qry)
