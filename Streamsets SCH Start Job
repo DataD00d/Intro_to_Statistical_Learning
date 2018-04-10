@@ -1,0 +1,71 @@
+
+#COMMAND TO CALL EXECUTABLE
+/efs/home/ps672610/Streamsets_Scripts/Start_Pipeline.sh 15d7f068-56f0-4ec9-8267-c17127468fe6:cargill.com c675827@cargill.com P1gBl0b!1
+
+#EXECUTABLE FILE
+#!/bin/bash
+
+
+if [ "$#" -ne 3 ]; then
+	echo "3 parameters are required" >&2
+	echo "1. DPM job id"
+	echo "2. DPM user id"
+	echo "3. DPM password"
+	exit 1
+fi
+
+
+# Variables
+jobId=$1
+userId=$2
+password=$3
+
+
+# Authenticate the DPM user by logging into DPM security app
+curl -X POST -d '{"userName":"'$userId'", "password": "'$password'"}' https://cloud.streamsets.com/security/public-rest/v1/authentication/login --header "Content-Type:application/json" --header "X-Requested-By:SDC" -c cookie.txt
+if [ $? -ne 0 ]; then
+	printf "ERROR - Curl call for DPM authentication failed."
+	exit 1
+fi
+
+
+# Generate auth token from security app
+sessionToken=$(cat cookie.txt | grep SSO | rev | grep -o '^\S*' | rev)
+if [ $? -ne 0 ]; then
+	printf "ERROR - Generation DPM session token."
+	exit 1
+else
+	echo ""
+	echo "Generated session token : $sessionToken"
+fi
+
+
+# Check the job status:
+jobStatus=$(curl -X GET https://cloud.streamsets.com/jobrunner/rest/v1/job/$jobId/currentStatus --header "Content-Type:application/json" --header "X-Requested-By:DPM" --header "X-SS-REST-CALL:true" --header "X-SS-User-Auth-Token:$sessionToken" -i)
+if [ $? -ne 0 ]; then
+	printf "ERROR - Curl call to get DPM job status failed."
+	exit 1
+fi
+
+# Only a job in 'INACTIVE' status can be started.
+if [[ $jobStatus == *"INACTIVE"* ]] && [[ $jobStatus != *"INACTIVE_ERROR"* ]]; then
+	echo ""
+	echo "Job status is 'INACTIVE'"
+	echo "Starting job with id:  $jobId"
+	
+	# Start the DPM job
+	startJob=$(curl -X POST https://cloud.streamsets.com/jobrunner/rest/v1/job/$jobId/start --header "Content-Type:application/json" --header "X-Requested-By:DPM" --header "X-SS-REST-CALL:true" --header "X-SS-User-Auth-Token:$sessionToken" -i)
+	if [ $? -ne 0 ]; then
+		printf "ERROR - Curl call failed to start the job:  $jobId."
+		exit 1
+	else
+		echo ""
+		echo "Successfully started job:  $jobId"
+	fi
+else
+	echo ""
+	echo "Job status must be 'INACTIVE' in order to start the job but job status is: $jobStatus"
+	echo "Cannot start job:  $jobId"
+	echo "Exiting the script..."
+	exit 1
+fi
