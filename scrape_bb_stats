@@ -1,0 +1,129 @@
+#SPECIFY URL
+from urllib.request import urlopen
+site = "https://www.basketball-reference.com/players/j/jamesle01.html"
+
+#QUERY WEBSITE AND RETURN THE HTML
+page = urlopen(site)
+
+from bs4 import BeautifulSoup
+soup = BeautifulSoup(page)
+
+#print(soup.prettify())
+
+#SELECT TABLE FROM WEB PAGE
+table = soup.find('table', { "class" : 'row_summable sortable stats_table', "id" : 'per_game'})
+
+#GENERATE LISTS
+field_1 = []
+field_2 = []
+field_3 = []
+field_4 = []
+field_5 = []
+field_6 = []
+field_7 = []
+field_8 = []
+field_9 = []
+field_10 = []
+field_11 = []
+field_12 = []
+field_13 = []
+field_14 = []
+field_15 = []
+field_16 = []
+field_17 = []
+field_18 = []
+field_19 = []
+field_20 = []
+field_21 = []
+field_22 = []
+field_23 = []
+field_24 = []
+field_25 = []
+field_26 = []
+field_27 = []
+field_28 = []
+field_29 = []
+field_30 = []
+
+
+#LOOP THROUGH TABLE TO BUILD LISTS
+for row in table.findAll('tr'):
+  cells = row.findAll('td')
+  states = row.findAll('th')
+  
+  print('row')
+  print('--------------------------')
+  print(row)
+  print('cells')
+  print('--------------------------')
+  print(cells)
+  print('states')
+  print('--------------------------')
+  print(states)
+  
+  if len(cells) != '29' and cells != []:
+    field_30.append(states[0].find(text = True))
+  
+  if len(cells) == 29:
+    field_1.append(cells[0].find(text = True))
+    field_2.append(cells[1].find(text = True))
+    field_3.append(cells[2].find(text = True))
+    field_4.append(cells[3].find(text = True))
+    field_5.append(cells[4].find(text = True))
+    field_6.append(cells[5].find(text = True))
+    field_7.append(cells[6].find(text = True))
+    field_8.append(cells[7].find(text = True))
+    field_9.append(cells[8].find(text = True))
+    field_10.append(cells[9].find(text = True))
+    field_11.append(cells[10].find(text = True))
+    field_12.append(cells[11].find(text = True))
+    field_13.append(cells[12].find(text = True))
+    field_14.append(cells[13].find(text = True))
+    field_15.append(cells[14].find(text = True))
+    field_16.append(cells[15].find(text = True))
+    field_17.append(cells[16].find(text = True))
+    field_18.append(cells[17].find(text = True))
+    field_19.append(cells[18].find(text = True))
+    field_20.append(cells[19].find(text = True))
+    field_21.append(cells[20].find(text = True))
+    field_22.append(cells[21].find(text = True))
+    field_23.append(cells[22].find(text = True))
+    field_24.append(cells[23].find(text = True))
+    field_25.append(cells[24].find(text = True))
+    field_26.append(cells[25].find(text = True))
+    field_27.append(cells[26].find(text = True))
+    field_28.append(cells[27].find(text = True))
+    field_29.append(cells[28].find(text = True))
+  
+  
+import pandas as pd
+df = pd.DataFrame(field_30, columns = ['season'])
+df['age'] = field_1
+df['team'] = field_2
+df['league'] = field_3
+df['position'] = field_4
+df['games'] = field_5
+df['games_started'] = field_6
+df['minutes_played'] = field_7
+df['fgm'] = field_8
+df['fga'] = field_9
+df['fgp'] = field_10
+df['fg3m'] = field_11
+df['fg3a'] = field_12
+df['fg3p'] = field_13
+df['fg2m'] = field_14
+df['df2a'] = field_15
+df['df2p'] = field_16
+df['efgp'] = field_17
+df['ftm'] = field_18
+df['fta'] = field_19
+df['ftp'] = field_20
+df['orb'] = field_21
+df['drb'] = field_22
+df['trb'] = field_23
+df['ast'] = field_24
+df['stl'] = field_25
+df['blk'] = field_26
+df['tov'] = field_27
+df['pf'] = field_28
+df['pts'] = field_29
