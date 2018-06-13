@@ -1,0 +1,1506 @@
+
+### ibp tablez ###
+SELECT * FROM prd_product_ctl.ibp_ask_final_vw WHERE segment IS NOT NULL and segment <> ''
+
+SELECT * FROM prd_product_ctl.ibp_charge_groups
+
+SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat WHERE system = 'RSTP' source_location_key = '20681' AND destination_location_key = '1500051967' AND departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+
+SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE system = 'SAP TM'
+
+SELECT * FROM prd_product_ctl.ibp_product_vw_mat --WHERE system = 'SAP TM'
+
+SELECT * FROM prd_product_ctl.ibp_location_vw_mat
+
+SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw
+
+SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_vw_mat
+
+SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat 
+
+SELECT * FROM prd_product_ctl.ibp_mileage_scale_vw
+
+SELECT * FROM prd_product_ctl.ibp_uom_conversions 
+
+SELECT * FROM prd_product_ctl.ibp_accessorial_thresholds
+
+SELECT * FROM prd_product_ctl.ibp_last_value_thresholds
+
+SELECT * FROM prd_product_ctl.ibp_product_freight_book_mapping
+
+
+### MATERIALIZE IBP VIEWS ###
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_data_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_data_vw
+COMPUTE STATS  prd_product_ctl.ibp_historical_data_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_product_vw_mat SELECT * FROM prd_product_ctl.ibp_product_vw
+COMPUTE STATS  prd_product_ctl.ibp_product_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_location_vw_mat SELECT * FROM prd_product_ctl.ibp_location_vw
+COMPUTE STATS  prd_product_ctl.ibp_location_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_cost_estimates_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_vw
+COMPUTE STATS  prd_product_ctl.ibp_historical_cost_estimates_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_weight_estimates_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw
+COMPUTE STATS  prd_product_ctl.ibp_historical_weight_estimates_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_volume_estimates_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw
+COMPUTE STATS  prd_product_ctl.ibp_historical_volume_estimates_vw_mat
+
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_all_escalators_vw_mat SELECT * FROM prd_product_ctl.ibp_all_escalators_vw
+COMPUTE STATS  prd_product_ctl.ibp_all_escalators_vw_mat
+
+
+### ASK FINAL ###
+CREATE VIEW prd_product_ctl.ibp_ask_final_vw AS
+SELECT business_group, mode, source_location_key, origination_location_id, reference_origination_id, source_location_city, source_location_region, source_location_postal_code,
+source_location_country, destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
+destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code FROM
+(SELECT f.*, g.freight_book_code FROM
+(SELECT c.*, d.segment, d.stcc FROM
+(SELECT a.business_group, initcap(a.mode) as mode, b.hist_location_key as source_location_key, a.origination_location_id, a.reference_origination_id,
+CASE WHEN a.origination_city IS NULL OR trim(a.origination_city) = '' THEN b.city ELSE a.origination_city END as source_location_city,
+CASE WHEN a.origination_state IS NULL OR trim(a.origination_state) = '' THEN b.state ELSE a.origination_state END as source_location_region,
+CASE WHEN a.origination_zip IS NULL OR trim(a.origination_zip) = '' THEN b.zip ELSE a.origination_zip END as source_location_postal_code,
+CASE WHEN a.origination_country IS NULL OR trim(a.origination_country) = '' THEN b.country ELSE a.origination_country END as source_location_country,
+f.hist_location_key as destination_location_key, a.destination_location_id, a.reference_destination_id,
+CASE WHEN a.destination_city IS NULL OR trim(a.destination_city) = '' THEN f.city ELSE a.destination_city END as destination_location_city,
+CASE WHEN a.destination_state IS NULL OR trim(a.destination_state) = '' THEN f.state ELSE a.destination_state END as destination_location_region,
+CASE WHEN a.destination_zip IS NULL OR trim(a.destination_zip) = '' THEN f.zip ELSE a.destination_zip END as destination_location_postal_code,
+CASE WHEN a.destination_country IS NULL OR trim(a.destination_country) = '' THEN f.country ELSE a.destination_country END as destination_location_country,
+a.product_id, a.profit_center, a.internal_external
+FROM 
+(SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
+FROM prd_product_ctl_ibp_ask.md_transportation_lane) a
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'o') b
+ON b.join_location = a.origination_join
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'd') f
+ON f.join_location = a.destination_location_id) C
+LEFT OUTER JOIN (SELECT *, CASE WHEN legacy_product_no IS NULL THEN material_key ELSE legacy_product_no END as product_join FROM prd_product_ctl.ibp_product_vw_mat) d
+ON d.product_join = c.product_id AND d.transportation_mode = c.mode) f
+LEFT OUTER JOIN prd_product_ctl.ibp_product_freight_book_mapping g
+ON g.stcc = f.stcc) h
+GROUP BY business_group, mode, source_location_key, origination_location_id, reference_origination_id, source_location_city, source_location_region, source_location_postal_code,
+source_location_country, destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
+destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code
+
+
+
+### IBP HISTORICAL TOTAL SPEND SCRIPT ###
+CREATE VIEW prd_product_ctl.ibp_historical_data_vw AS
+(SELECT 'SAP TM' as system, 'NA' as region, b.freight_order_number, CAST(from_unixtime(CAST(b.departure_date as bigint)) AS TIMESTAMP) departure_date, 
+b.ibp_mode as transportation_mode, b.means_of_transport, d.segment, b.source_location_key,
+b.source_location_city, b.source_location_region, b.source_location_postal_code, b.source_location_country, b.destination_location_key, b.destination_location_city, b.destination_location_region,
+b.destination_location_postal_code, b.destination_location_country, b.net_weight_user_selected_unit as net_weight, b.net_weight_user_selected_unit_unit as net_weight_unit, 
+CASE WHEN b.for_volume_unit IN ('GAL', 'GLL') THEN b.for_volume ELSE NULL END as volume, CASE WHEN b.for_volume_unit IN ('GAL', 'GLL') THEN 'GAL' ELSE NULL END as volume_unit,
+b.total_distance as distance, b.total_distance_unit as distance_unit, c.rated_amount_currency as currency_code, CAST(c.admin as float) as admin, CAST(c.congestion as float) as congestion, CAST(c.currency as float) as currency,
+CAST(c.deadhead as float) as deadhead, CAST(c.detention_destination as float) as detention_destination, CAST(c.detention_source as float) as detention_source, CAST(c.discount as float) as discount, CAST(c.drayage as float) as drayage, CAST(c.equipment as float) as equipment, 
+CAST(c.fuel as float) as fuel, CAST(c.holiday as float) as holiday, CAST(c.layover as float) as layover, CAST(c.linehaul as float) as linehaul, CAST(c.linehaul_spot as float) as linehaul_spot,
+CAST(c.other as float) as other, CAST(c.pallet as float) as pallet, CAST(c.preloading as float) as preloading, CAST(c.radar as float) as radar, CAST(c.rider as float) as rider, CAST(c.stop_charges as float) as stop_charges,
+CAST(c.storage as float) as storage, CAST(c.switch as float) as switch, CAST(c.tolls as float) as tolls, CAST(c.tonu as float) as tonu, CAST(c.unloading as float) as unloading, CAST(c.wash as float) as wash
+FROM 
+(SELECT f.*, f2.ibp_mode FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final f 
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'SAP TM') f2 
+ON f2.system_mode = f.transportation_mode)  b
+LEFT JOIN
+(SELECT a.freight_order_number, a.rated_amount_currency, SUM(CASE WHEN a.charge_group = 'Admin' THEN a.rated_amount ELSE 0 END) as admin,
+SUM(CASE WHEN a.charge_group = 'Congestion' THEN a.rated_amount ELSE 0 END) as congestion, SUM(CASE WHEN a.charge_group = 'Currency' THEN a.rated_amount ELSE 0 END) as currency,
+SUM(CASE WHEN a.charge_group = 'Deadhead' THEN a.rated_amount ELSE 0 END) as deadhead, SUM(CASE WHEN a.charge_group = 'Detention Destination' THEN a.rated_amount ELSE 0 END) as detention_destination, 
+SUM(CASE WHEN a.charge_group = 'Detention Source' THEN a.rated_amount ELSE 0 END) as detention_source, SUM(CASE WHEN a.charge_group = 'Discount' THEN a.rated_amount ELSE 0 END) as discount, SUM(CASE WHEN a.charge_group = 'Drayage' THEN a.rated_amount ELSE 0 END) as drayage, 
+SUM(CASE WHEN a.charge_group = 'Equipment' THEN a.rated_amount ELSE 0 END) as equipment, SUM(CASE WHEN a.charge_group = 'Fuel' THEN a.rated_amount ELSE 0 END) as fuel, SUM(CASE WHEN a.charge_group = 'Holiday' THEN a.rated_amount ELSE 0 END) as holiday,
+SUM(CASE WHEN a.charge_group = 'Layover' THEN a.rated_amount ELSE 0 END) as layover, SUM(CASE WHEN a.charge_group = 'Linehaul' THEN a.rated_amount ELSE 0 END) as linehaul,
+SUM(CASE WHEN a.charge_group = 'Linehaul_spot' THEN a.rated_amount ELSE 0 END) as linehaul_spot, SUM(CASE WHEN a.charge_group = 'Other' THEN a.rated_amount ELSE 0 END) as other,
+SUM(CASE WHEN a.charge_group = 'Pallet' THEN a.rated_amount ELSE 0 END) as pallet, SUM(CASE WHEN a.charge_group = 'Preloading' THEN a.rated_amount ELSE 0 END) as preloading,
+SUM(CASE WHEN a.charge_group = 'RADAR' THEN a.rated_amount ELSE 0 END) as radar, SUM(CASE WHEN a.charge_group = 'Rider' THEN a.rated_amount ELSE 0 END) as rider,
+SUM(CASE WHEN a.charge_group = 'Stop Charges' THEN a.rated_amount ELSE 0 END) as stop_charges, SUM(CASE WHEN a.charge_group = 'Storage' THEN a.rated_amount ELSE 0 END) as storage,
+SUM(CASE WHEN a.charge_group = 'Switch' THEN a.rated_amount ELSE 0 END) as switch, SUM(CASE WHEN a.charge_group = 'Tolls' THEN a.rated_amount ELSE 0 END) as tolls,
+SUM(CASE WHEN a.charge_group = 'TONU' THEN a.rated_amount ELSE 0 END) as tonu, SUM(CASE WHEN a.charge_group = 'Unloading' THEN a.rated_amount ELSE 0 END) as unloading,
+SUM(CASE WHEN a.charge_group = 'Wash' THEN a.rated_amount ELSE 0 END) as wash
+FROM
+(SELECT a2.freight_order_number, a2.rated_amount_currency, a3.charge_group, a2.rated_amount 
+FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_charge_detail_final a2
+LEFT JOIN (SELECT * FROM prd_product_ctl.ibp_charge_groups WHERE system = 'SAP TM') a3
+ON a3.charge_code = a2.rated_charge_type_key) a
+GROUP BY a.freight_order_number, a.rated_amount_currency) c
+ON c.freight_order_number = b.freight_order_number
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
+ON d.transportation_mode = b.ibp_mode AND d.means_of_transport = b.means_of_transport ) 
+--BlueJay removed due lack of product information
+--UNION ALL
+--(SELECT 'BlueJay' as system, 'NA' as region, f.sid, CAST(from_unixtime(CAST(f.shp_plan_depart as bigint)) AS TIMESTAMP) departure_date, f.transport_mode, f.equipment_type, g.segment, f.origin_loc_code, f.origin_city, f.origin_state, f.origin_zip, substr(f.origin_zip,1,3) as o3,
+--f.dest_loc_code, f.destination_city, f.destination_state, f.destination_zip, substr(f.destination_zip,1,3) as d3, CAST(REPLACE(REPLACE(f.weight, " ", ""), "Pounds", "") as float) as weight,
+--'LB' as net_weight_unit, f.loaded_miles, 'MI' as total_distance_unit, f.currency_indicator, CAST(f.fuel_charges as float) as fuel, CAST(f.line_haul_charges as float) as linehaul
+--FROM dev_internal_ctl_truck.nata_bluejay_shipment_data_final f
+--INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'BlueJay') g
+--ON g.transportation_mode = f.transport_mode AND g.means_of_transport = f.equipment_type
+--WHERE (fuel_charges <> 0 OR line_haul_charges <> 0) ) 
+UNION ALL
+(SELECT 'RSTP' as system, 'NA' as region, h.bol, CAST(from_unixtime(CAST(h.ship_date/1000 as bigint)) AS TIMESTAMP) departure_date, 
+h.ibp_mode as transportation_mode, h.equip, i.segment,
+h.originid, h.ocity, h.ostate, h.ozip, h.ocountry, CAST(h.dloc as string) as dloc, h.dcity, h.dstate, h.dzip, h.dcountry, 
+CAST(CASE WHEN h.uom = 'MTN' THEN (h.ship_qty * 2204.62) ELSE CASE WHEN h.uom = 'KG' THEN (h.ship_qty * 2.20462) ELSE CASE WHEN h.uom = 'LBS' THEN h.ship_qty ELSE NULL END END END as float) as net_weight_user_selected, 
+CASE WHEN h.uom IN ('LBS', 'MTN', 'KG') THEN 'LB' ELSE NULL END as net_weight_uom, 
+CAST(CASE WHEN h.uom = 'GAL' THEN h.ship_qty ELSE NULL END as float) as for_volume_user_selected, 
+CASE WHEN h.uom IN ('GAL') THEN h.uom ELSE NULL END as for_volume_uom,
+CAST(h.distance as float) as distance, 'MI' as distance_unit, h.currencytype, CAST(h.admin as float) as admin, 
+CAST(h.congestion as float) as congestion, CAST(h.currency as float) as currency, CAST(h.deadhead as float) as deadhead, CAST(h.detention_destination as float) as detention_destination,
+CAST(h.detention_source as float) as detention_source, CAST(h.discount as float) as discount, CAST(h.drayage as float) as drayage, CAST(h.equipment as float) as equipment, CAST(h.fuel as float) as fuel, CAST(h.holiday as float) as holiday,
+CAST(h.layover as float) as layover, CAST(h.linehaul as float) as linehaul, CAST(h.linehaul_spot as float) as linehaul_spot, CAST(h.other as float) as other, CAST(h.pallet as float) as pallet, CAST(h.preloading as float) as preloading,
+CAST(h.radar as float) as radar, CAST(h.rider as float) as rider, CAST(h.stop_charges as float) as stop_charges, CAST(h.storage as float) as storage, CAST(h.switch as float) as switch,
+CAST(h.tolls as float) as tolls, CAST(h.tonu as float) as tonu, CAST(h.unloading as float) as unloading, CAST(h.wash as float) as wash
+FROM 
+(SELECT k.bol, k.ship_date, k.mode, j.ibp_mode as ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, SUM(k.ship_qty) as ship_qty, k.uom, SUM(k.distance) as distance, k.currencytype, SUM(k.admin) as admin, SUM(k.congestion) as congestion,
+SUM(k.currency) as currency, SUM(k.deadhead) as deadhead, SUM(k.detention_destination) as detention_destination, SUM(k.detention_origin) as detention_source, SUM(k.discount) as discount, SUM(k.drayage) as drayage,
+SUM(k.equipment) as equipment, SUM(k.fuel) as fuel, SUM(k.holiday) as holiday, SUM(k.layover) as layover, SUM(CASE WHEN k.spot_rate_indicator = 'Auto Rated' THEN linehaul ELSE 0 END) as linehaul, 
+SUM(CASE WHEN k.spot_rate_indicator = 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul_spot, SUM(k.other) as other, SUM(k.pallet) as pallet, SUM(k.preloading) as preloading,
+SUM(k.radar) as radar, SUM(k.rider) as rider, SUM(k.stop_charges) as stop_charges, SUM(k.storage) as storage, SUM(k.switch) as switch, SUM(k.tolls) as tolls, SUM(k.tonu) as tonu, SUM(k.unloading) as unloading, SUM(k.wash) as wash
+FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final k
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'RSTP') j
+ON j.system_mode = k.mode
+WHERE k.uom IN ('LBS', 'GAL', 'MTN', 'KG')
+GROUP BY k.bol, k.ship_date, k.mode, j.ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, k.uom, k.currencytype) h
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) i
+ON i.transportation_mode = h.mode AND i.means_of_transport = h.equip ) 
+
+
+### IBP HISTORICAL PRODUCT SCRIPT ###
+CREATE VIEW prd_product_ctl.ibp_product_vw AS
+(SELECT 'SAP TM' as system, 'NA' as region,
+c.ibp_mode as transportation_mode, d.segment, c.material_key,  NULL as 'legacy_product_no', g.stcc
+FROM 
+(SELECT f.*, f2.ibp_mode FROM dev_internal_ctl_truck.nata_sap_tm_material_allocation_route_detail_final f 
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'SAP TM') f2 
+ON f2.system_mode = f.transportation_mode ) c
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
+ON d.transportation_mode = c.transportation_mode AND d.means_of_transport = c.means_of_transport
+LEFT OUTER JOIN (SELECT product_code, stcc FROM  dev_internal_ctl_truck.nata_sap_tm_foida_final WHERE stcc <> '' GROUP BY product_code, stcc) g
+ON g.product_code = c.material_key
+GROUP BY c.ibp_mode, d.segment, c.material_key, g.stcc)
+UNION ALL
+(SELECT 'RSTP' as system, 'NA' as region,
+a.ibp_mode as transportation_mode, b.segment, a.p_accounting_group_code, f.product_no, replace(a.stcc, '-', '') as stcc
+FROM 
+(SELECT g.*, g2.ibp_mode FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final g
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'RSTP') g2
+ON g2.system_mode = g.mode) a
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) b
+ON b.transportation_mode = a.ibp_mode AND b.means_of_transport = a.equip
+LEFT OUTER JOIN (SELECT product_no, accounting_group_code FROM dev_internal_ctl_truck.ctl_shipment_fact GROUP BY product_no, accounting_group_code) f 
+ON f.accounting_group_code = a.p_accounting_group_code
+GROUP BY a.ibp_mode, b.segment, a.p_accounting_group_code, f.product_no, a.stcc)
+
+
+### IBP HISTORICAL LOCATIONz SCRIPT ###
+CREATE VIEW prd_product_ctl.ibp_location_vw AS
+SELECT 'SAP TM' as system, 'NA' as region, 'o' as o_d,
+source_location_key as hist_location_key, NULL as legacy_id, source_location_key as join_location, source_location_city as city, source_location_region as state, source_location_postal_code as zip, source_location_country as country
+FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final
+GROUP BY source_location_key, source_location_city, source_location_region, source_location_postal_code, source_location_country
+UNION ALL
+SELECT 'SAP TM' as system, 'NA' as region, 'd' as o_d,
+destination_location_key, NULL as legacy_id, destination_location_key as join_location, destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country
+FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final
+GROUP BY destination_location_key, destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country
+UNION ALL
+SELECT 'RSTP' as system, 'NA' as region, 'o' as o_d,
+origin_id, NULL as 'origin_gds', origin_id as join_location, city, state, post_code, country
+FROM dev_internal_ctl_truck.ctl_origin 
+GROUP BY origin_id, city, state, post_code, country
+UNION ALL
+SELECT 'RSTP' as system, 'NA' as region, 'd' as o_d,
+CAST(location_key as string) as location_key, location_gds_no, location_gds_no as join_location, city, state, post_code, country
+FROM dev_internal_ctl_truck.ctl_location
+GROUP BY location_key, location_gds_no, city, state, post_code, country
+
+
+
+### COST ESTIMATES VIEWS ### 3 MONTHS
+CREATE VIEW prd_product_ctl.ibp_cost_averages_3_months_vw AS
+SELECT f.transportation_mode, f.segment, f.source_location_key, f.destination_location_key, f.currency_code, 'Location' as 'analysis_level', f.seg_od_counts as 'n',
+f.linehaul_mean as linehaul_est, ((CASE WHEN f.linehaul_spot_freq > z.linehaul_spot_threshold THEN f.linehaul_spot_freq ELSE 0 END) * f.linehaul_spot_mean) as linehaul_spot_adj_est, f.fuel_mean as fuel_est,
+((CASE WHEN f.wash_freq > z.wash_threshold THEN 1 ELSE 0 END) * f.wash_mean) as wash_est, 
+((CASE WHEN f.deadhead_freq > z.deadhead_threshold THEN 1 ELSE 0 END) * f.deadhead_mean) as deadhead_est,
+((CASE WHEN f.admin_freq > z.admin_threshold THEN 1 ELSE 0 END) * f.admin_mean) as admin_est, 
+((CASE WHEN f.congestion_freq > z.congestion_threshold THEN 1 ELSE 0 END) * f.congestion_mean) as congestion_est,
+((CASE WHEN f.currency_freq > z.currency_threshold THEN 1 ELSE 0 END) * f.currency_mean) as currency_est, 
+((CASE WHEN f.detention_destination_freq > z.detention_destination_threshold THEN 1 ELSE 0 END) * f.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f.detention_source_freq > z.detention_source_threshold THEN 1 ELSE 0 END) * f.detention_source_mean) as detention_source_est, 
+((CASE WHEN f.discount_freq > z.discount_threshold THEN 1 ELSE 0 END) * f.discount_mean) as discount_est,
+((CASE WHEN f.drayage_freq > z.drayage_threshold THEN 1 ELSE 0 END) * f.drayage_mean) as drayage_est, 
+((CASE WHEN f.equipment_freq > z.equipment_threshold THEN 1 ELSE 0 END) * f.equipment_mean) as equipment_est,
+((CASE WHEN f.holiday_freq > z.holiday_threshold THEN 1 ELSE 0 END) * f.holiday_mean) as holiday_est, 
+((CASE WHEN f.layover_freq > z.layover_threshold THEN 1 ELSE 0 END) * f.layover_mean) as layover_est,
+((CASE WHEN f.other_freq > z.other_threshold THEN 1 ELSE 0 END) * f.other_mean) as other_est, 
+((CASE WHEN f.pallet_freq > z.pallet_threshold THEN 1 ELSE 0 END) * f.pallet_mean) as pallet_est,
+((CASE WHEN f.tolls_freq > z.tolls_threshold THEN 1 ELSE 0 END) * f.tolls_mean) as tolls_est, 
+((CASE WHEN f.unloading_freq > z.unloading_threshold THEN 1 ELSE 0 END) * f.unloading_mean) as unloading_est,
+((CASE WHEN f.radar_freq > z.radar_threshold THEN 1 ELSE 0 END) * f.radar_mean) as radar_est, 
+((CASE WHEN f.tonu_freq > z.tonu_threshold THEN 1 ELSE 0 END) * f.tonu_mean) as tonu_est, 
+((CASE WHEN f.switch_freq > z.switch_threshold THEN 1 ELSE 0 END) * f.switch_mean) as switch_est,
+((CASE WHEN f.rider_freq > z.rider_threshold THEN 1 ELSE 0 END) * f.rider_mean) as rider_est, 
+((CASE WHEN f.stop_charges_freq > z.stop_charges_threshold THEN 1 ELSE 0 END) * f.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f.storage_freq > z.storage_threshold THEN 1 ELSE 0 END) * f.storage_mean) as storage_est
+FROM
+(SELECT d.transportation_mode, d.segment, d.source_location_key, d.destination_location_key, d.currency_code, d.seg_od_counts,
+(d.wash_cnt / d.seg_od_counts) as wash_freq, (d.deadhead_cnt / d.seg_od_counts) as deadhead_freq,
+(d.admin_cnt / d.seg_od_counts) as admin_freq, (d.congestion_cnt / d.seg_od_counts) as congestion_freq,
+(d.currency_cnt / d.seg_od_counts) as currency_freq, (d.detention_destination_cnt / d.seg_od_counts) as detention_destination_freq,
+(d.detention_source_cnt / d.seg_od_counts) as detention_source_freq, (d.discount_cnt / d.seg_od_counts) as discount_freq,
+(d.drayage_cnt / d.seg_od_counts) as drayage_freq, (d.equipment_cnt / d.seg_od_counts) as equipment_freq,
+(d.holiday_cnt / d.seg_od_counts) as holiday_freq, (d.layover_cnt / d.seg_od_counts) as layover_freq, (d.linehaul_spot_cnt / d.seg_od_counts) as linehaul_spot_freq,
+(d.other_cnt / d.seg_od_counts) as other_freq, (d.pallet_cnt / d.seg_od_counts) as pallet_freq,
+(d.tolls_cnt / d.seg_od_counts) as tolls_freq, (d.unloading_cnt / d.seg_od_counts) as unloading_freq,
+(d.radar_cnt / d.seg_od_counts) as radar_freq, (d.tonu_cnt / d.seg_od_counts) as tonu_freq, (d.switch_cnt / d.seg_od_counts) as switch_freq,
+(d.rider_cnt / d.seg_od_counts) as rider_freq, (d.stop_charges_cnt / d.seg_od_counts) as stop_charges_freq, (d.storage_cnt / d.seg_od_counts) as storage_freq,
+d.wash_mean, d.deadhead_mean, d.admin_mean, d.congestion_mean, d.currency_mean, d.detention_destination_mean, d.detention_source_mean,
+d.discount_mean, d.drayage_mean, d.equipment_mean, d.fuel_mean, d.holiday_mean, d.layover_mean, d.linehaul_mean, (d.linehaul_spot_mean - d.linehaul_mean) as linehaul_spot_mean , d.other_mean, d.pallet_mean, 
+d.tolls_mean, d.unloading_mean, d.radar_mean, d.tonu_mean, d.switch_mean, d.rider_mean, d.stop_charges_mean, d.storage_mean
+FROM
+(SELECT c.*, b.wash_cnt, b.deadhead_cnt, b.admin_cnt, b.congestion_cnt, b.currency_cnt, b.detention_destination_cnt,
+b.detention_source_cnt, b.discount_cnt, b.drayage_cnt, b.equipment_cnt, b.fuel_cnt, b.holiday_cnt, b.layover_cnt, b.linehaul_cnt, b.linehaul_spot_cnt, b.other_cnt, 
+b.pallet_cnt, b.tolls_cnt, b.unloading_cnt, b.radar_cnt, b.tonu_cnt, b.switch_cnt, b.rider_cnt,
+b.stop_charges_cnt, b.storage_cnt, 
+CASE WHEN b.wash_cnt = 0 THEN 0 ELSE (c.wash_total / b.wash_cnt) END as wash_mean,
+CASE WHEN b.deadhead_cnt = 0 THEN 0 ELSE (c.deadhead_total / b.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b.admin_cnt = 0 THEN 0 ELSE (c.admin_total / b.admin_cnt) END as admin_mean,
+CASE WHEN b.congestion_cnt = 0 THEN 0 ELSE (c.congestion_total / b.congestion_cnt) END as congestion_mean,
+CASE WHEN b.currency_cnt = 0 THEN 0 ELSE (c.currency_total / b.currency_cnt) END as currency_mean,
+CASE WHEN b.detention_destination_cnt = 0 THEN 0 ELSE (c.detention_destination_total / b.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b.detention_source_cnt = 0 THEN 0 ELSE (c.detention_source_total / b.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b.discount_cnt = 0 THEN 0 ELSE (c.discount_total / b.discount_cnt) END as discount_mean,
+CASE WHEN b.drayage_cnt = 0 THEN 0 ELSE (c.drayage_total / b.drayage_cnt) END as drayage_mean,
+CASE WHEN b.equipment_cnt = 0 THEN 0 ELSE (c.equipment_total / b.equipment_cnt) END as equipment_mean,
+CASE WHEN b.fuel_cnt = 0 THEN 0 ELSE (c.fuel_total / b.fuel_cnt) END as fuel_mean,
+CASE WHEN b.holiday_cnt = 0 THEN 0 ELSE (c.holiday_total / b.holiday_cnt) END as holiday_mean,
+CASE WHEN b.layover_cnt = 0 THEN 0 ELSE (c.layover_total / b.layover_cnt) END as layover_mean,
+CASE WHEN b.linehaul_cnt = 0 THEN 0 ELSE (c.linehaul_total / b.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b.linehaul_spot_cnt = 0 THEN 0 ELSE (c.linehaul_spot_total / b.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b.other_cnt = 0 THEN 0 ELSE (c.other_total / b.other_cnt) END as other_mean,
+CASE WHEN b.pallet_cnt = 0 THEN 0 ELSE (c.pallet_total / b.pallet_cnt) END as pallet_mean,
+CASE WHEN b.tolls_cnt = 0 THEN 0 ELSE (c.tolls_total / b.tolls_cnt) END as tolls_mean,
+CASE WHEN b.unloading_cnt = 0 THEN 0 ELSE (c.unloading_total / b.unloading_cnt) END as unloading_mean,
+CASE WHEN b.radar_cnt = 0 THEN 0 ELSE (c.radar_total / b.radar_cnt) END as radar_mean,
+CASE WHEN b.tonu_cnt = 0 THEN 0 ELSE (c.tonu_total / b.tonu_cnt) END as tonu_mean,
+CASE WHEN b.switch_cnt = 0 THEN 0 ELSE (c.switch_total / b.switch_cnt) END as switch_mean,
+CASE WHEN b.rider_cnt = 0 THEN 0 ELSE (c.rider_total / b.rider_cnt) END as rider_mean,
+CASE WHEN b.stop_charges_cnt = 0 THEN 0 ELSE (c.stop_charges_total / b.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b.storage_cnt = 0 THEN 0 ELSE (c.storage_total / b.storage_cnt) END as storage_mean
+FROM
+(SELECT g.transportation_mode, g.segment, g.source_location_key, g.destination_location_key, g.currency_code, COUNT(*) as seg_od_counts,
+SUM(g.wash) as wash_total, SUM(g.deadhead) as deadhead_total, SUM(g.admin) as admin_total, SUM(g.congestion) as congestion_total,
+SUM(g.currency) as currency_total, SUM(g.detention_destination) as detention_destination_total, SUM(g.detention_source) as detention_source_total,
+SUM(g.discount) as discount_total, SUM(g.drayage) as drayage_total, SUM(g.equipment) as equipment_total, SUM(g.fuel) as fuel_total, SUM(g.holiday) as holiday_total,
+SUM(g.layover) as layover_total, SUM(g.linehaul) as linehaul_total, SUM(g.linehaul_spot) as linehaul_spot_total, SUM(g.other) as other_total, SUM(g.pallet) as pallet_total, SUM(g.tolls) as tolls_total, 
+SUM(g.unloading) as unloading_total, SUM(g.radar) as radar_total, SUM(g.tonu) as tonu_total, SUM(g.switch) as switch_total, SUM(g.rider) as rider_total, 
+SUM(g.stop_charges) as stop_charges_total, SUM(g.storage) as storage_total
+FROM prd_product_ctl.ibp_historical_data_vw_mat g
+WHERE g.departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+GROUP BY g.transportation_mode, g.segment, g.source_location_key, g.destination_location_key, g.currency_code) c
+LEFT JOIN
+(SELECT a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code,
+SUM(a.wash_cnt) as wash_cnt, SUM(a.deadhead_cnt) as deadhead_cnt, SUM(a.admin_cnt) as admin_cnt,
+SUM(a.congestion_cnt) as congestion_cnt, SUM(a.currency_cnt) as currency_cnt, SUM(a.detention_destination_cnt) as detention_destination_cnt,
+SUM(a.detention_source_cnt) as detention_source_cnt, SUM(a.discount_cnt) as discount_cnt, SUM(a.drayage_cnt) as drayage_cnt, 
+SUM(a.equipment_cnt) as equipment_cnt,SUM(a.fuel_cnt) as fuel_cnt, SUM(a.holiday_cnt) as holiday_cnt, SUM(a.layover_cnt) as layover_cnt, SUM(a.linehaul_cnt) as linehaul_cnt, SUM(a.linehaul_spot_cnt) as linehaul_spot_cnt,
+SUM(a.other_cnt) as other_cnt, SUM(a.pallet_cnt) as pallet_cnt, SUM(a.tolls_cnt) as tolls_cnt, SUM(a.unloading_cnt) as unloading_cnt, SUM(a.radar_cnt) as radar_cnt,
+SUM(a.tonu_cnt) as tonu_cnt, SUM(a.switch_cnt) as switch_cnt, SUM(a.rider_cnt) as rider_cnt, SUM(a.stop_charges_cnt) as stop_charges_cnt,
+SUM(a.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope) ) a
+GROUP BY a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code) b
+ON b.transportation_mode = c.transportation_mode AND b.segment = c.segment AND b.source_location_key = c.source_location_key 
+AND b.destination_location_key = c.destination_location_key AND b.currency_code = c.currency_code) d ) f
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z
+ON z.mode = f.transportation_mode
+UNION ALL
+SELECT f2.transportation_mode, f2.segment, f2.source_location_key, f2.destination_location_key, f2.currency_code, '5 digit zip' as 'analysis_level', f2.seg_od_counts as 'n',
+f2.linehaul_mean, ((CASE WHEN f2.linehaul_spot_freq > 0 THEN z2.linehaul_spot_threshold ELSE 0 END) * f2.linehaul_spot_mean) as linehaul_spot_est, f2.fuel_mean,
+((CASE WHEN f2.wash_freq > z2.wash_threshold THEN 1 ELSE 0 END) * f2.wash_mean) as wash_est, 
+((CASE WHEN f2.deadhead_freq > z2.deadhead_threshold THEN 1 ELSE 0 END) * f2.deadhead_mean) as deadhead_est,
+((CASE WHEN f2.admin_freq > z2.admin_threshold THEN 1 ELSE 0 END) * f2.admin_mean) as admin_est, 
+((CASE WHEN f2.congestion_freq > z2.congestion_threshold THEN 1 ELSE 0 END) * f2.congestion_mean) as congestion_est,
+((CASE WHEN f2.currency_freq > z2.currency_threshold THEN 1 ELSE 0 END) * f2.currency_mean) as currency_est, 
+((CASE WHEN f2.detention_destination_freq > z2.detention_destination_threshold THEN 1 ELSE 0 END) * f2.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f2.detention_source_freq > z2.detention_source_threshold THEN 1 ELSE 0 END) * f2.detention_source_mean) as detention_source_est, 
+((CASE WHEN f2.discount_freq > z2.discount_threshold THEN 1 ELSE 0 END) * f2.discount_mean) as discount_est,
+((CASE WHEN f2.drayage_freq > z2.drayage_threshold THEN 1 ELSE 0 END) * f2.drayage_mean) as drayage_est, 
+((CASE WHEN f2.equipment_freq > z2.equipment_threshold THEN 1 ELSE 0 END) * f2.equipment_mean) as equipment_est,
+((CASE WHEN f2.holiday_freq > z2.holiday_threshold THEN 1 ELSE 0 END) * f2.holiday_mean) as holiday_est, 
+((CASE WHEN f2.layover_freq > z2.layover_threshold THEN 1 ELSE 0 END) * f2.layover_mean) as layover_est,
+((CASE WHEN f2.other_freq > z2.other_threshold THEN 1 ELSE 0 END) * f2.other_mean) as other_est, 
+((CASE WHEN f2.pallet_freq > z2.pallet_threshold THEN 1 ELSE 0 END) * f2.pallet_mean) as pallet_est,
+((CASE WHEN f2.tolls_freq > z2.tolls_threshold THEN 1 ELSE 0 END) * f2.tolls_mean) as tolls_est, 
+((CASE WHEN f2.unloading_freq > z2.unloading_threshold THEN 1 ELSE 0 END) * f2.unloading_mean) as unloading_est,
+((CASE WHEN f2.radar_freq > z2.radar_threshold THEN 1 ELSE 0 END) * f2.radar_mean) as radar_est, 
+((CASE WHEN f2.tonu_freq > z2.tonu_threshold THEN 1 ELSE 0 END) * f2.tonu_mean) as tonu_est, 
+((CASE WHEN f2.switch_freq > z2.switch_threshold THEN 1 ELSE 0 END) * f2.switch_mean) as switch_est,
+((CASE WHEN f2.rider_freq > z2.rider_threshold THEN 1 ELSE 0 END) * f2.rider_mean) as rider_est, 
+((CASE WHEN f2.stop_charges_freq > z2.stop_charges_threshold THEN 1 ELSE 0 END) * f2.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f2.storage_freq > z2.storage_threshold THEN 1 ELSE 0 END) * f2.storage_mean) as storage_est
+FROM
+(SELECT d2.transportation_mode, d2.segment, d2.source_location_key, d2.destination_location_key, d2.currency_code, d2.seg_od_counts,
+(d2.wash_cnt / d2.seg_od_counts) as wash_freq, (d2.deadhead_cnt / d2.seg_od_counts) as deadhead_freq,
+(d2.admin_cnt / d2.seg_od_counts) as admin_freq, (d2.congestion_cnt / d2.seg_od_counts) as congestion_freq,
+(d2.currency_cnt / d2.seg_od_counts) as currency_freq, (d2.detention_destination_cnt / d2.seg_od_counts) as detention_destination_freq,
+(d2.detention_source_cnt / d2.seg_od_counts) as detention_source_freq, (d2.discount_cnt / d2.seg_od_counts) as discount_freq,
+(d2.drayage_cnt / d2.seg_od_counts) as drayage_freq, (d2.equipment_cnt / d2.seg_od_counts) as equipment_freq,
+(d2.holiday_cnt / d2.seg_od_counts) as holiday_freq, (d2.layover_cnt / d2.seg_od_counts) as layover_freq, (d2.linehaul_spot_cnt / d2.seg_od_counts) as linehaul_spot_freq,
+(d2.other_cnt / d2.seg_od_counts) as other_freq, (d2.pallet_cnt / d2.seg_od_counts) as pallet_freq,
+(d2.tolls_cnt / d2.seg_od_counts) as tolls_freq, (d2.unloading_cnt / d2.seg_od_counts) as unloading_freq,
+(d2.radar_cnt / d2.seg_od_counts) as radar_freq, (d2.tonu_cnt / d2.seg_od_counts) as tonu_freq, (d2.switch_cnt / d2.seg_od_counts) as switch_freq,
+(d2.rider_cnt / d2.seg_od_counts) as rider_freq, (d2.stop_charges_cnt / d2.seg_od_counts) as stop_charges_freq, (d2.storage_cnt / d2.seg_od_counts) as storage_freq,
+d2.wash_mean, d2.deadhead_mean, d2.admin_mean, d2.congestion_mean, d2.currency_mean, d2.detention_destination_mean, d2.detention_source_mean,
+d2.discount_mean, d2.drayage_mean, d2.equipment_mean, d2.fuel_mean, d2.holiday_mean, d2.layover_mean, d2.linehaul_mean, (d2.linehaul_spot_mean - d2.linehaul_mean) as linehaul_spot_mean, d2.other_mean, d2.pallet_mean, d2.tolls_mean, d2.unloading_mean,
+d2.radar_mean, d2.tonu_mean, d2.switch_mean, d2.rider_mean, d2.stop_charges_mean, d2.storage_mean
+FROM
+(SELECT c2.*, b2.wash_cnt, b2.deadhead_cnt, b2.admin_cnt, b2.congestion_cnt, b2.currency_cnt, b2.detention_destination_cnt,
+b2.detention_source_cnt, b2.discount_cnt, b2.drayage_cnt, b2.equipment_cnt, b2.fuel_cnt, b2.holiday_cnt, b2.layover_cnt, b2.linehaul_cnt, b2.linehaul_spot_cnt, b2.other_cnt, 
+b2.pallet_cnt, b2.tolls_cnt, b2.unloading_cnt, b2.radar_cnt, b2.tonu_cnt, b2.switch_cnt, b2.rider_cnt,
+b2.stop_charges_cnt, b2.storage_cnt, 
+CASE WHEN b2.wash_cnt = 0 THEN 0 ELSE (c2.wash_total / b2.wash_cnt) END as wash_mean,
+CASE WHEN b2.deadhead_cnt = 0 THEN 0 ELSE (c2.deadhead_total / b2.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b2.admin_cnt = 0 THEN 0 ELSE (c2.admin_total / b2.admin_cnt) END as admin_mean,
+CASE WHEN b2.congestion_cnt = 0 THEN 0 ELSE (c2.congestion_total / b2.congestion_cnt) END as congestion_mean,
+CASE WHEN b2.currency_cnt = 0 THEN 0 ELSE (c2.currency_total / b2.currency_cnt) END as currency_mean,
+CASE WHEN b2.detention_destination_cnt = 0 THEN 0 ELSE (c2.detention_destination_total / b2.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b2.detention_source_cnt = 0 THEN 0 ELSE (c2.detention_source_total / b2.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b2.discount_cnt = 0 THEN 0 ELSE (c2.discount_total / b2.discount_cnt) END as discount_mean,
+CASE WHEN b2.drayage_cnt = 0 THEN 0 ELSE (c2.drayage_total / b2.drayage_cnt) END as drayage_mean,
+CASE WHEN b2.equipment_cnt = 0 THEN 0 ELSE (c2.equipment_total / b2.equipment_cnt) END as equipment_mean,
+CASE WHEN b2.fuel_cnt = 0 THEN 0 ELSE (c2.fuel_total / b2.fuel_cnt) END as fuel_mean,
+CASE WHEN b2.holiday_cnt = 0 THEN 0 ELSE (c2.holiday_total / b2.holiday_cnt) END as holiday_mean,
+CASE WHEN b2.layover_cnt = 0 THEN 0 ELSE (c2.layover_total / b2.layover_cnt) END as layover_mean,
+CASE WHEN b2.linehaul_cnt = 0 THEN 0 ELSE (c2.linehaul_total / b2.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b2.linehaul_spot_cnt = 0 THEN 0 ELSE (c2.linehaul_spot_total / b2.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b2.other_cnt = 0 THEN 0 ELSE (c2.other_total / b2.other_cnt) END as other_mean,
+CASE WHEN b2.pallet_cnt = 0 THEN 0 ELSE (c2.pallet_total / b2.pallet_cnt) END as pallet_mean,
+CASE WHEN b2.tolls_cnt = 0 THEN 0 ELSE (c2.tolls_total / b2.tolls_cnt) END as tolls_mean,
+CASE WHEN b2.unloading_cnt = 0 THEN 0 ELSE (c2.unloading_total / b2.unloading_cnt) END as unloading_mean,
+CASE WHEN b2.radar_cnt = 0 THEN 0 ELSE (c2.radar_total / b2.radar_cnt) END as radar_mean,
+CASE WHEN b2.tonu_cnt = 0 THEN 0 ELSE (c2.tonu_total / b2.tonu_cnt) END as tonu_mean,
+CASE WHEN b2.switch_cnt = 0 THEN 0 ELSE (c2.switch_total / b2.switch_cnt) END as switch_mean,
+CASE WHEN b2.rider_cnt = 0 THEN 0 ELSE (c2.rider_total / b2.rider_cnt) END as rider_mean,
+CASE WHEN b2.stop_charges_cnt = 0 THEN 0 ELSE (c2.stop_charges_total / b2.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b2.storage_cnt = 0 THEN 0 ELSE (c2.storage_total / b2.storage_cnt) END as storage_mean
+FROM
+(SELECT g2.transportation_mode, g2.segment, g2.source_location_key, g2.destination_location_key, g2.currency_code, COUNT(*) as seg_od_counts,
+SUM(g2.wash) as wash_total, SUM(g2.deadhead) as deadhead_total, SUM(g2.admin) as admin_total, SUM(g2.congestion) as congestion_total,
+SUM(g2.currency) as currency_total, SUM(g2.detention_destination) as detention_destination_total, SUM(g2.detention_source) as detention_source_total,
+SUM(g2.discount) as discount_total, SUM(g2.drayage) as drayage_total, SUM(g2.equipment) as equipment_total, SUM(g2.fuel) as fuel_total, SUM(g2.holiday) as holiday_total,
+SUM(g2.layover) as layover_total, SUM(g2.linehaul) as linehaul_total, SUM(g2.linehaul_spot) as linehaul_spot_total, SUM(g2.other) as other_total, SUM(g2.pallet) as pallet_total, SUM(g2.tolls) as tolls_total, SUM(g2.unloading) as unloading_total,
+SUM(g2.radar) as radar_total, SUM(g2.tonu) as tonu_total, SUM(g2.switch) as switch_total, SUM(g2.rider) as rider_total, SUM(g2.stop_charges) as stop_charges_total,
+SUM(g2.storage) as storage_total
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as source_location_key, substr(destination_location_postal_code,1,5) as destination_location_key, currency_code,
+wash, deadhead, admin, congestion, currency, detention_destination, detention_source,
+discount, drayage, equipment, fuel, holiday, layover, linehaul, linehaul_spot, other, pallet, tolls, unloading,
+radar, tonu, switch, rider, stop_charges, storage
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) g2
+GROUP BY g2.transportation_mode, g2.segment, g2.source_location_key, g2.destination_location_key, g2.currency_code) c2
+LEFT JOIN
+(SELECT a2.transportation_mode, a2.segment, a2.source_location_key, a2.destination_location_key, a2.currency_code,
+SUM(a2.wash_cnt) as wash_cnt, SUM(a2.deadhead_cnt) as deadhead_cnt, SUM(a2.admin_cnt) as admin_cnt,
+SUM(a2.congestion_cnt) as congestion_cnt, SUM(a2.currency_cnt) as currency_cnt, SUM(a2.detention_destination_cnt) as detention_destination_cnt,
+SUM(a2.detention_source_cnt) as detention_source_cnt, SUM(a2.discount_cnt) as discount_cnt, SUM(a2.drayage_cnt) as drayage_cnt, 
+SUM(a2.equipment_cnt) as equipment_cnt, SUM(a2.fuel_cnt) as fuel_cnt, SUM(a2.holiday_cnt) as holiday_cnt, SUM(a2.layover_cnt) as layover_cnt, SUM(a2.linehaul_cnt) as linehaul_cnt, 
+SUM(a2.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a2.other_cnt) as other_cnt, SUM(a2.pallet_cnt) as pallet_cnt, SUM(a2.tolls_cnt) as tolls_cnt, SUM(a2.unloading_cnt) as unloading_cnt, 
+SUM(a2.radar_cnt) as radar_cnt, SUM(a2.tonu_cnt) as tonu_cnt, SUM(a2.switch_cnt) as switch_cnt, SUM(a2.rider_cnt) as rider_cnt, SUM(a2.stop_charges_cnt) as stop_charges_cnt,
+SUM(a2.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as source_location_key, substr(destination_location_postal_code,1,5) as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope) ) a2
+GROUP BY a2.transportation_mode, a2.segment, a2.source_location_key, a2.destination_location_key, a2.currency_code) b2
+ON b2.transportation_mode = c2.transportation_mode AND b2.segment = c2.segment AND b2.source_location_key = c2.source_location_key 
+AND b2.destination_location_key = c2.destination_location_key AND b2.currency_code = c2.currency_code) d2 ) f2
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z2
+ON z2.mode = f2.transportation_mode
+UNION ALL
+SELECT f3.transportation_mode, f3.segment, f3.source_location_key, f3.destination_location_key, f3.currency_code, '3 digit zip' as 'analysis_level', f3.seg_od_counts as 'n',
+f3.linehaul_mean, ((CASE WHEN f3.linehaul_spot_freq > z3.linehaul_spot_threshold THEN f3.linehaul_spot_freq ELSE 0 END) * f3.linehaul_spot_mean) as linehaul_spot_est, f3.fuel_mean,
+((CASE WHEN f3.wash_freq > z3.wash_threshold THEN 1 ELSE 0 END) * f3.wash_mean) as wash_est, 
+((CASE WHEN f3.deadhead_freq > z3.deadhead_threshold THEN 1 ELSE 0 END) * f3.deadhead_mean) as deadhead_est,
+((CASE WHEN f3.admin_freq > z3.admin_threshold THEN 1 ELSE 0 END) * f3.admin_mean) as admin_est, 
+((CASE WHEN f3.congestion_freq > z3.congestion_threshold THEN 1 ELSE 0 END) * f3.congestion_mean) as congestion_est,
+((CASE WHEN f3.currency_freq > z3.currency_threshold THEN 1 ELSE 0 END) * f3.currency_mean) as currency_est, 
+((CASE WHEN f3.detention_destination_freq > z3.detention_destination_threshold THEN 1 ELSE 0 END) * f3.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f3.detention_source_freq > z3.detention_source_threshold THEN 1 ELSE 0 END) * f3.detention_source_mean) as detention_source_est, 
+((CASE WHEN f3.discount_freq > z3.discount_threshold THEN 1 ELSE 0 END) * f3.discount_mean) as discount_est,
+((CASE WHEN f3.drayage_freq > z3.drayage_threshold THEN 1 ELSE 0 END) * f3.drayage_mean) as drayage_est, 
+((CASE WHEN f3.equipment_freq > z3.equipment_threshold THEN 1 ELSE 0 END) * f3.equipment_mean) as equipment_est,
+((CASE WHEN f3.holiday_freq > z3.holiday_threshold THEN 1 ELSE 0 END) * f3.holiday_mean) as holiday_est, 
+((CASE WHEN f3.layover_freq > z3.layover_threshold THEN 1 ELSE 0 END) * f3.layover_mean) as layover_est,
+((CASE WHEN f3.other_freq > z3.other_threshold THEN 1 ELSE 0 END) * f3.other_mean) as other_est, 
+((CASE WHEN f3.pallet_freq > z3.pallet_threshold THEN 1 ELSE 0 END) * f3.pallet_mean) as pallet_est,
+((CASE WHEN f3.tolls_freq > z3.tolls_threshold THEN 1 ELSE 0 END) * f3.tolls_mean) as tolls_est, 
+((CASE WHEN f3.unloading_freq > z3.unloading_threshold THEN 1 ELSE 0 END) * f3.unloading_mean) as unloading_est,
+((CASE WHEN f3.radar_freq > z3.radar_threshold THEN 1 ELSE 0 END) * f3.radar_mean) as radar_est, 
+((CASE WHEN f3.tonu_freq > z3.tonu_threshold THEN 1 ELSE 0 END) * f3.tonu_mean) as tonu_est, 
+((CASE WHEN f3.switch_freq > z3.switch_threshold THEN 1 ELSE 0 END) * f3.switch_mean) as switch_est,
+((CASE WHEN f3.rider_freq > z3.rider_threshold THEN 1 ELSE 0 END) * f3.rider_mean) as rider_est, 
+((CASE WHEN f3.stop_charges_freq > z3.stop_charges_threshold THEN 1 ELSE 0 END) * f3.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f3.storage_freq > z3.storage_threshold THEN 1 ELSE 0 END) * f3.storage_mean) as storage_est
+FROM
+(SELECT d3.transportation_mode, d3.segment, d3.source_location_key, d3.destination_location_key, d3.currency_code, d3.seg_od_counts,
+(d3.wash_cnt / d3.seg_od_counts) as wash_freq, (d3.deadhead_cnt / d3.seg_od_counts) as deadhead_freq,
+(d3.admin_cnt / d3.seg_od_counts) as admin_freq, (d3.congestion_cnt / d3.seg_od_counts) as congestion_freq,
+(d3.currency_cnt / d3.seg_od_counts) as currency_freq, (d3.detention_destination_cnt / d3.seg_od_counts) as detention_destination_freq,
+(d3.detention_source_cnt / d3.seg_od_counts) as detention_source_freq, (d3.discount_cnt / d3.seg_od_counts) as discount_freq,
+(d3.drayage_cnt / d3.seg_od_counts) as drayage_freq, (d3.equipment_cnt / d3.seg_od_counts) as equipment_freq,
+(d3.holiday_cnt / d3.seg_od_counts) as holiday_freq, (d3.layover_cnt / d3.seg_od_counts) as layover_freq, (d3.linehaul_spot_cnt / d3.seg_od_counts) as linehaul_spot_freq,
+(d3.other_cnt / d3.seg_od_counts) as other_freq, (d3.pallet_cnt / d3.seg_od_counts) as pallet_freq,
+(d3.tolls_cnt / d3.seg_od_counts) as tolls_freq, (d3.unloading_cnt / d3.seg_od_counts) as unloading_freq,
+(d3.radar_cnt / d3.seg_od_counts) as radar_freq, (d3.tonu_cnt / d3.seg_od_counts) as tonu_freq, (d3.switch_cnt / d3.seg_od_counts) as switch_freq,
+(d3.rider_cnt / d3.seg_od_counts) as rider_freq, (d3.stop_charges_cnt / d3.seg_od_counts) as stop_charges_freq, (d3.storage_cnt / d3.seg_od_counts) as storage_freq,
+d3.wash_mean, d3.deadhead_mean, d3.admin_mean, d3.congestion_mean, d3.currency_mean, d3.detention_destination_mean, d3.detention_source_mean,
+d3.discount_mean, d3.drayage_mean, d3.equipment_mean, d3.fuel_mean, d3.holiday_mean, d3.layover_mean, d3.linehaul_mean, (d3.linehaul_spot_mean - d3.linehaul_mean) as linehaul_spot_mean, d3.other_mean, d3.pallet_mean, d3.tolls_mean, d3.unloading_mean,
+d3.radar_mean, d3.tonu_mean, d3.switch_mean, d3.rider_mean, d3.stop_charges_mean, d3.storage_mean
+FROM
+(SELECT c3.*, b3.wash_cnt, b3.deadhead_cnt, b3.admin_cnt, b3.congestion_cnt, b3.currency_cnt, b3.detention_destination_cnt,
+b3.detention_source_cnt, b3.discount_cnt, b3.drayage_cnt, b3.equipment_cnt, b3.fuel_cnt, b3.holiday_cnt, b3.layover_cnt, b3.linehaul_cnt, b3.linehaul_spot_cnt, b3.other_cnt, 
+b3.pallet_cnt, b3.tolls_cnt, b3.unloading_cnt, b3.radar_cnt, b3.tonu_cnt, b3.switch_cnt, b3.rider_cnt,
+b3.stop_charges_cnt, b3.storage_cnt, 
+CASE WHEN b3.wash_cnt = 0 THEN 0 ELSE (c3.wash_total / b3.wash_cnt) END as wash_mean,
+CASE WHEN b3.deadhead_cnt = 0 THEN 0 ELSE (c3.deadhead_total / b3.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b3.admin_cnt = 0 THEN 0 ELSE (c3.admin_total / b3.admin_cnt) END as admin_mean,
+CASE WHEN b3.congestion_cnt = 0 THEN 0 ELSE (c3.congestion_total / b3.congestion_cnt) END as congestion_mean,
+CASE WHEN b3.currency_cnt = 0 THEN 0 ELSE (c3.currency_total / b3.currency_cnt) END as currency_mean,
+CASE WHEN b3.detention_destination_cnt = 0 THEN 0 ELSE (c3.detention_destination_total / b3.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b3.detention_source_cnt = 0 THEN 0 ELSE (c3.detention_source_total / b3.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b3.discount_cnt = 0 THEN 0 ELSE (c3.discount_total / b3.discount_cnt) END as discount_mean,
+CASE WHEN b3.drayage_cnt = 0 THEN 0 ELSE (c3.drayage_total / b3.drayage_cnt) END as drayage_mean,
+CASE WHEN b3.equipment_cnt = 0 THEN 0 ELSE (c3.equipment_total / b3.equipment_cnt) END as equipment_mean,
+CASE WHEN b3.fuel_cnt = 0 THEN 0 ELSE (c3.fuel_total / b3.fuel_cnt) END as fuel_mean,
+CASE WHEN b3.holiday_cnt = 0 THEN 0 ELSE (c3.holiday_total / b3.holiday_cnt) END as holiday_mean,
+CASE WHEN b3.layover_cnt = 0 THEN 0 ELSE (c3.layover_total / b3.layover_cnt) END as layover_mean,
+CASE WHEN b3.linehaul_cnt = 0 THEN 0 ELSE (c3.linehaul_total / b3.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b3.linehaul_spot_cnt = 0 THEN 0 ELSE (c3.linehaul_spot_total / b3.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b3.other_cnt = 0 THEN 0 ELSE (c3.other_total / b3.other_cnt) END as other_mean,
+CASE WHEN b3.pallet_cnt = 0 THEN 0 ELSE (c3.pallet_total / b3.pallet_cnt) END as pallet_mean,
+CASE WHEN b3.tolls_cnt = 0 THEN 0 ELSE (c3.tolls_total / b3.tolls_cnt) END as tolls_mean,
+CASE WHEN b3.unloading_cnt = 0 THEN 0 ELSE (c3.unloading_total / b3.unloading_cnt) END as unloading_mean,
+CASE WHEN b3.radar_cnt = 0 THEN 0 ELSE (c3.radar_total / b3.radar_cnt) END as radar_mean,
+CASE WHEN b3.tonu_cnt = 0 THEN 0 ELSE (c3.tonu_total / b3.tonu_cnt) END as tonu_mean,
+CASE WHEN b3.switch_cnt = 0 THEN 0 ELSE (c3.switch_total / b3.switch_cnt) END as switch_mean,
+CASE WHEN b3.rider_cnt = 0 THEN 0 ELSE (c3.rider_total / b3.rider_cnt) END as rider_mean,
+CASE WHEN b3.stop_charges_cnt = 0 THEN 0 ELSE (c3.stop_charges_total / b3.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b3.storage_cnt = 0 THEN 0 ELSE (c3.storage_total / b3.storage_cnt) END as storage_mean
+FROM
+(SELECT g3.transportation_mode, g3.segment, g3.source_location_key, g3.destination_location_key, g3.currency_code, COUNT(*) as seg_od_counts,
+SUM(g3.wash) as wash_total, SUM(g3.deadhead) as deadhead_total, SUM(g3.admin) as admin_total, SUM(g3.congestion) as congestion_total,
+SUM(g3.currency) as currency_total, SUM(g3.detention_destination) as detention_destination_total, SUM(g3.detention_source) as detention_source_total,
+SUM(g3.discount) as discount_total, SUM(g3.drayage) as drayage_total, SUM(g3.equipment) as equipment_total, SUM(g3.fuel) as fuel_total, SUM(g3.holiday) as holiday_total,
+SUM(g3.layover) as layover_total, SUM(g3.linehaul) as linehaul_total, SUM(g3.linehaul_spot) as linehaul_spot_total, SUM(g3.other) as other_total, SUM(g3.pallet) as pallet_total, SUM(g3.tolls) as tolls_total, SUM(g3.unloading) as unloading_total,
+SUM(g3.radar) as radar_total, SUM(g3.tonu) as tonu_total, SUM(g3.switch) as switch_total, SUM(g3.rider) as rider_total, SUM(g3.stop_charges) as stop_charges_total,
+SUM(g3.storage) as storage_total
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as source_location_key, substr(destination_location_postal_code,1,3) as destination_location_key, currency_code,
+wash, deadhead, admin, congestion, currency, detention_destination, detention_source,
+discount, drayage, equipment, fuel, holiday, layover, linehaul, linehaul_spot, other, pallet, tolls, unloading,
+radar, tonu, switch, rider, stop_charges, storage
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) g3
+GROUP BY g3.transportation_mode, g3.segment, g3.source_location_key, g3.destination_location_key, g3.currency_code) c3
+LEFT JOIN
+(SELECT a3.transportation_mode, a3.segment, a3.source_location_key, a3.destination_location_key, a3.currency_code,
+SUM(a3.wash_cnt) as wash_cnt, SUM(a3.deadhead_cnt) as deadhead_cnt, SUM(a3.admin_cnt) as admin_cnt,
+SUM(a3.congestion_cnt) as congestion_cnt, SUM(a3.currency_cnt) as currency_cnt, SUM(a3.detention_destination_cnt) as detention_destination_cnt,
+SUM(a3.detention_source_cnt) as detention_source_cnt, SUM(a3.discount_cnt) as discount_cnt, SUM(a3.drayage_cnt) as drayage_cnt, 
+SUM(a3.equipment_cnt) as equipment_cnt, SUM(a3.fuel_cnt) as fuel_cnt, SUM(a3.holiday_cnt) as holiday_cnt, SUM(a3.layover_cnt) as layover_cnt, SUM(a3.linehaul_cnt) as linehaul_cnt,
+SUM(a3.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a3.other_cnt) as other_cnt,
+SUM(a3.pallet_cnt) as pallet_cnt, SUM(a3.tolls_cnt) as tolls_cnt, SUM(a3.unloading_cnt) as unloading_cnt, SUM(a3.radar_cnt) as radar_cnt,
+SUM(a3.tonu_cnt) as tonu_cnt, SUM(a3.switch_cnt) as switch_cnt, SUM(a3.rider_cnt) as rider_cnt, SUM(a3.stop_charges_cnt) as stop_charges_cnt,
+SUM(a3.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as source_location_key, substr(destination_location_postal_code,1,3) as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope) ) a3
+GROUP BY a3.transportation_mode, a3.segment, a3.source_location_key, a3.destination_location_key, a3.currency_code) b3
+ON b3.transportation_mode = c3.transportation_mode AND b3.segment = c3.segment AND b3.source_location_key = c3.source_location_key 
+AND b3.destination_location_key = c3.destination_location_key AND b3.currency_code = c3.currency_code) d3 ) f3
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z3
+ON z3.mode = f3.transportation_mode
+UNION ALL
+SELECT f4.transportation_mode, f4.segment, f4.source_location_key, f4.destination_location_key, f4.currency_code, 'Segment' as 'analysis_level', f4.seg_od_counts as 'n',
+f4.linehaul_mean, ((CASE WHEN f4.linehaul_spot_freq > z4.linehaul_spot_threshold THEN f4.linehaul_spot_freq ELSE 0 END) * f4.linehaul_spot_mean) as linehaul_spot_est, f4.fuel_mean,
+((CASE WHEN f4.wash_freq > z4.wash_threshold THEN 1 ELSE 0 END) * f4.wash_mean) as wash_est, 
+((CASE WHEN f4.deadhead_freq > z4.deadhead_threshold THEN 1 ELSE 0 END) * f4.deadhead_mean) as deadhead_est,
+((CASE WHEN f4.admin_freq > z4.admin_threshold THEN 1 ELSE 0 END) * f4.admin_mean) as admin_est, 
+((CASE WHEN f4.congestion_freq > z4.congestion_threshold THEN 1 ELSE 0 END) * f4.congestion_mean) as congestion_est,
+((CASE WHEN f4.currency_freq > z4.currency_threshold THEN 1 ELSE 0 END) * f4.currency_mean) as currency_est, 
+((CASE WHEN f4.detention_destination_freq > z4.detention_destination_threshold THEN 1 ELSE 0 END) * f4.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f4.detention_source_freq > z4.detention_source_threshold THEN 1 ELSE 0 END) * f4.detention_source_mean) as detention_source_est, 
+((CASE WHEN f4.discount_freq > z4.discount_threshold THEN 1 ELSE 0 END) * f4.discount_mean) as discount_est,
+((CASE WHEN f4.drayage_freq > z4.drayage_threshold THEN 1 ELSE 0 END) * f4.drayage_mean) as drayage_est, 
+((CASE WHEN f4.equipment_freq > z4.equipment_threshold THEN 1 ELSE 0 END) * f4.equipment_mean) as equipment_est,
+((CASE WHEN f4.holiday_freq > z4.holiday_threshold THEN 1 ELSE 0 END) * f4.holiday_mean) as holiday_est, 
+((CASE WHEN f4.layover_freq > z4.layover_threshold THEN 1 ELSE 0 END) * f4.layover_mean) as layover_est,
+((CASE WHEN f4.other_freq > z4.other_threshold THEN 1 ELSE 0 END) * f4.other_mean) as other_est, 
+((CASE WHEN f4.pallet_freq > z4.pallet_threshold THEN 1 ELSE 0 END) * f4.pallet_mean) as pallet_est,
+((CASE WHEN f4.tolls_freq > z4.tolls_threshold THEN 1 ELSE 0 END) * f4.tolls_mean) as tolls_est, 
+((CASE WHEN f4.unloading_freq > z4.unloading_threshold THEN 1 ELSE 0 END) * f4.unloading_mean) as unloading_est,
+((CASE WHEN f4.radar_freq > z4.radar_threshold THEN 1 ELSE 0 END) * f4.radar_mean) as radar_est, 
+((CASE WHEN f4.tonu_freq > z4.tonu_threshold THEN 1 ELSE 0 END) * f4.tonu_mean) as tonu_est, 
+((CASE WHEN f4.switch_freq > z4.switch_threshold THEN 1 ELSE 0 END) * f4.switch_mean) as switch_est,
+((CASE WHEN f4.rider_freq > z4.rider_threshold THEN 1 ELSE 0 END) * f4.rider_mean) as rider_est, 
+((CASE WHEN f4.stop_charges_freq > z4.stop_charges_threshold THEN 1 ELSE 0 END) * f4.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f4.storage_freq > z4.storage_threshold THEN 1 ELSE 0 END) * f4.storage_mean) as storage_est
+FROM
+(SELECT d4.transportation_mode, d4.segment, d4.source_location_key, d4.destination_location_key, d4.currency_code, d4.seg_od_counts,
+(d4.wash_cnt / d4.seg_od_counts) as wash_freq, (d4.deadhead_cnt / d4.seg_od_counts) as deadhead_freq,
+(d4.admin_cnt / d4.seg_od_counts) as admin_freq, (d4.congestion_cnt / d4.seg_od_counts) as congestion_freq,
+(d4.currency_cnt / d4.seg_od_counts) as currency_freq, (d4.detention_destination_cnt / d4.seg_od_counts) as detention_destination_freq,
+(d4.detention_source_cnt / d4.seg_od_counts) as detention_source_freq, (d4.discount_cnt / d4.seg_od_counts) as discount_freq,
+(d4.drayage_cnt / d4.seg_od_counts) as drayage_freq, (d4.equipment_cnt / d4.seg_od_counts) as equipment_freq,
+(d4.holiday_cnt / d4.seg_od_counts) as holiday_freq, (d4.layover_cnt / d4.seg_od_counts) as layover_freq, (d4.linehaul_spot_cnt / d4.seg_od_counts) as linehaul_spot_freq,
+(d4.other_cnt / d4.seg_od_counts) as other_freq, (d4.pallet_cnt / d4.seg_od_counts) as pallet_freq,
+(d4.tolls_cnt / d4.seg_od_counts) as tolls_freq, (d4.unloading_cnt / d4.seg_od_counts) as unloading_freq,
+(d4.radar_cnt / d4.seg_od_counts) as radar_freq, (d4.tonu_cnt / d4.seg_od_counts) as tonu_freq, (d4.switch_cnt / d4.seg_od_counts) as switch_freq,
+(d4.rider_cnt / d4.seg_od_counts) as rider_freq, (d4.stop_charges_cnt / d4.seg_od_counts) as stop_charges_freq, (d4.storage_cnt / d4.seg_od_counts) as storage_freq,
+d4.wash_mean, d4.deadhead_mean, d4.admin_mean, d4.congestion_mean, d4.currency_mean, d4.detention_destination_mean, d4.detention_source_mean,
+d4.discount_mean, d4.drayage_mean, d4.equipment_mean, d4.fuel_mean, d4.holiday_mean, d4.layover_mean, d4.linehaul_mean, (d4.linehaul_spot_mean - d4.linehaul_mean) as linehaul_spot_mean, d4.other_mean, d4.pallet_mean, d4.tolls_mean, d4.unloading_mean,
+d4.radar_mean, d4.tonu_mean, d4.switch_mean, d4.rider_mean, d4.stop_charges_mean, d4.storage_mean
+FROM
+(SELECT c4.*, b4.wash_cnt, b4.deadhead_cnt, b4.admin_cnt, b4.congestion_cnt, b4.currency_cnt, b4.detention_destination_cnt,
+b4.detention_source_cnt, b4.discount_cnt, b4.drayage_cnt, b4.equipment_cnt, b4.fuel_cnt, b4.holiday_cnt, b4.layover_cnt, b4.linehaul_cnt, b4.linehaul_spot_cnt, b4.other_cnt, 
+b4.pallet_cnt, b4.tolls_cnt, b4.unloading_cnt, b4.radar_cnt, b4.tonu_cnt, b4.switch_cnt, b4.rider_cnt,
+b4.stop_charges_cnt, b4.storage_cnt, 
+CASE WHEN b4.wash_cnt = 0 THEN 0 ELSE (c4.wash_total / b4.wash_cnt) END as wash_mean,
+CASE WHEN b4.deadhead_cnt = 0 THEN 0 ELSE (c4.deadhead_total / b4.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b4.admin_cnt = 0 THEN 0 ELSE (c4.admin_total / b4.admin_cnt) END as admin_mean,
+CASE WHEN b4.congestion_cnt = 0 THEN 0 ELSE (c4.congestion_total / b4.congestion_cnt) END as congestion_mean,
+CASE WHEN b4.currency_cnt = 0 THEN 0 ELSE (c4.currency_total / b4.currency_cnt) END as currency_mean,
+CASE WHEN b4.detention_destination_cnt = 0 THEN 0 ELSE (c4.detention_destination_total / b4.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b4.detention_source_cnt = 0 THEN 0 ELSE (c4.detention_source_total / b4.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b4.discount_cnt = 0 THEN 0 ELSE (c4.discount_total / b4.discount_cnt) END as discount_mean,
+CASE WHEN b4.drayage_cnt = 0 THEN 0 ELSE (c4.drayage_total / b4.drayage_cnt) END as drayage_mean,
+CASE WHEN b4.equipment_cnt = 0 THEN 0 ELSE (c4.equipment_total / b4.equipment_cnt) END as equipment_mean,
+CASE WHEN b4.fuel_cnt = 0 THEN 0 ELSE (c4.fuel_total / b4.fuel_cnt) END as fuel_mean,
+CASE WHEN b4.holiday_cnt = 0 THEN 0 ELSE (c4.holiday_total / b4.holiday_cnt) END as holiday_mean,
+CASE WHEN b4.layover_cnt = 0 THEN 0 ELSE (c4.layover_total / b4.layover_cnt) END as layover_mean,
+CASE WHEN b4.linehaul_cnt = 0 THEN 0 ELSE (c4.linehaul_total / b4.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b4.linehaul_spot_cnt = 0 THEN 0 ELSE (c4.linehaul_spot_total / b4.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b4.other_cnt = 0 THEN 0 ELSE (c4.other_total / b4.other_cnt) END as other_mean,
+CASE WHEN b4.pallet_cnt = 0 THEN 0 ELSE (c4.pallet_total / b4.pallet_cnt) END as pallet_mean,
+CASE WHEN b4.tolls_cnt = 0 THEN 0 ELSE (c4.tolls_total / b4.tolls_cnt) END as tolls_mean,
+CASE WHEN b4.unloading_cnt = 0 THEN 0 ELSE (c4.unloading_total / b4.unloading_cnt) END as unloading_mean,
+CASE WHEN b4.radar_cnt = 0 THEN 0 ELSE (c4.radar_total / b4.radar_cnt) END as radar_mean,
+CASE WHEN b4.tonu_cnt = 0 THEN 0 ELSE (c4.tonu_total / b4.tonu_cnt) END as tonu_mean,
+CASE WHEN b4.switch_cnt = 0 THEN 0 ELSE (c4.switch_total / b4.switch_cnt) END as switch_mean,
+CASE WHEN b4.rider_cnt = 0 THEN 0 ELSE (c4.rider_total / b4.rider_cnt) END as rider_mean,
+CASE WHEN b4.stop_charges_cnt = 0 THEN 0 ELSE (c4.stop_charges_total / b4.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b4.storage_cnt = 0 THEN 0 ELSE (c4.storage_total / b4.storage_cnt) END as storage_mean
+FROM
+(SELECT g4.transportation_mode, g4.segment, 'All' as source_location_key, 'All' as destination_location_key, g4.currency_code, COUNT(*) as seg_od_counts,
+SUM(g4.wash) as wash_total, SUM(g4.deadhead) as deadhead_total, SUM(g4.admin) as admin_total, SUM(g4.congestion) as congestion_total,
+SUM(g4.currency) as currency_total, SUM(g4.detention_destination) as detention_destination_total, SUM(g4.detention_source) as detention_source_total,
+SUM(g4.discount) as discount_total, SUM(g4.drayage) as drayage_total, SUM(g4.equipment) as equipment_total, SUM(g4.fuel) as fuel_total, SUM(g4.holiday) as holiday_total,
+SUM(g4.layover) as layover_total, SUM(g4.linehaul) as linehaul_total, SUM(g4.linehaul_spot) as linehaul_spot_total, SUM(g4.other) as other_total, SUM(g4.pallet) as pallet_total, SUM(g4.tolls) as tolls_total, 
+SUM(g4.unloading) as unloading_total, SUM(g4.radar) as radar_total, SUM(g4.tonu) as tonu_total, SUM(g4.switch) as switch_total, SUM(g4.rider) as rider_total, 
+SUM(g4.stop_charges) as stop_charges_total, SUM(g4.storage) as storage_total
+FROM prd_product_ctl.ibp_historical_data_vw_mat g4
+WHERE g4.departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) 
+GROUP BY g4.transportation_mode, g4.segment, g4.currency_code) c4
+LEFT JOIN
+(SELECT a4.transportation_mode, a4.segment, a4.source_location_key, a4.destination_location_key, a4.currency_code,
+SUM(a4.wash_cnt) as wash_cnt, SUM(a4.deadhead_cnt) as deadhead_cnt, SUM(a4.admin_cnt) as admin_cnt,
+SUM(a4.congestion_cnt) as congestion_cnt, SUM(a4.currency_cnt) as currency_cnt, SUM(a4.detention_destination_cnt) as detention_destination_cnt,
+SUM(a4.detention_source_cnt) as detention_source_cnt, SUM(a4.discount_cnt) as discount_cnt, SUM(a4.drayage_cnt) as drayage_cnt, 
+SUM(a4.equipment_cnt) as equipment_cnt, SUM(a4.fuel_cnt) as fuel_cnt, SUM(a4.holiday_cnt) as holiday_cnt, SUM(a4.layover_cnt) as layover_cnt, SUM(a4.linehaul_cnt) as linehaul_cnt,
+SUM(a4.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a4.other_cnt) as other_cnt,
+SUM(a4.pallet_cnt) as pallet_cnt, SUM(a4.tolls_cnt) as tolls_cnt, SUM(a4.unloading_cnt) as unloading_cnt, SUM(a4.radar_cnt) as radar_cnt,
+SUM(a4.tonu_cnt) as tonu_cnt, SUM(a4.switch_cnt) as switch_cnt, SUM(a4.rider_cnt) as rider_cnt, SUM(a4.stop_charges_cnt) as stop_charges_cnt,
+SUM(a4.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, 'All' as source_location_key, 'All' as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope) ) a4
+GROUP BY a4.transportation_mode, a4.segment, a4.source_location_key, a4.destination_location_key, a4.currency_code) b4
+ON b4.transportation_mode = c4.transportation_mode AND b4.segment = c4.segment AND b4.source_location_key = c4.source_location_key 
+AND b4.destination_location_key = c4.destination_location_key AND b4.currency_code = c4.currency_code) d4 ) f4
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z4
+ON z4.mode = f4.transportation_mode
+
+
+### COST ESTIMATES VIEWS ### 6, 12 MONTHS, same as 3 month except exlcuding Rail
+CREATE VIEW prd_product_ctl.ibp_cost_averages_12_months_vw AS
+SELECT f.transportation_mode, f.segment, f.source_location_key, f.destination_location_key, f.currency_code, 'Location' as 'analysis_level', f.seg_od_counts as 'n',
+f.linehaul_mean as linehaul_est, ((CASE WHEN f.linehaul_spot_freq > z.linehaul_spot_threshold THEN f.linehaul_spot_freq ELSE 0 END) * f.linehaul_spot_mean) as linehaul_spot_adj_est, f.fuel_mean as fuel_est,
+((CASE WHEN f.wash_freq > z.wash_threshold THEN 1 ELSE 0 END) * f.wash_mean) as wash_est, 
+((CASE WHEN f.deadhead_freq > z.deadhead_threshold THEN 1 ELSE 0 END) * f.deadhead_mean) as deadhead_est,
+((CASE WHEN f.admin_freq > z.admin_threshold THEN 1 ELSE 0 END) * f.admin_mean) as admin_est, 
+((CASE WHEN f.congestion_freq > z.congestion_threshold THEN 1 ELSE 0 END) * f.congestion_mean) as congestion_est,
+((CASE WHEN f.currency_freq > z.currency_threshold THEN 1 ELSE 0 END) * f.currency_mean) as currency_est, 
+((CASE WHEN f.detention_destination_freq > z.detention_destination_threshold THEN 1 ELSE 0 END) * f.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f.detention_source_freq > z.detention_source_threshold THEN 1 ELSE 0 END) * f.detention_source_mean) as detention_source_est, 
+((CASE WHEN f.discount_freq > z.discount_threshold THEN 1 ELSE 0 END) * f.discount_mean) as discount_est,
+((CASE WHEN f.drayage_freq > z.drayage_threshold THEN 1 ELSE 0 END) * f.drayage_mean) as drayage_est, 
+((CASE WHEN f.equipment_freq > z.equipment_threshold THEN 1 ELSE 0 END) * f.equipment_mean) as equipment_est,
+((CASE WHEN f.holiday_freq > z.holiday_threshold THEN 1 ELSE 0 END) * f.holiday_mean) as holiday_est, 
+((CASE WHEN f.layover_freq > z.layover_threshold THEN 1 ELSE 0 END) * f.layover_mean) as layover_est,
+((CASE WHEN f.other_freq > z.other_threshold THEN 1 ELSE 0 END) * f.other_mean) as other_est, 
+((CASE WHEN f.pallet_freq > z.pallet_threshold THEN 1 ELSE 0 END) * f.pallet_mean) as pallet_est,
+((CASE WHEN f.tolls_freq > z.tolls_threshold THEN 1 ELSE 0 END) * f.tolls_mean) as tolls_est, 
+((CASE WHEN f.unloading_freq > z.unloading_threshold THEN 1 ELSE 0 END) * f.unloading_mean) as unloading_est,
+((CASE WHEN f.radar_freq > z.radar_threshold THEN 1 ELSE 0 END) * f.radar_mean) as radar_est, 
+((CASE WHEN f.tonu_freq > z.tonu_threshold THEN 1 ELSE 0 END) * f.tonu_mean) as tonu_est, 
+((CASE WHEN f.switch_freq > z.switch_threshold THEN 1 ELSE 0 END) * f.switch_mean) as switch_est,
+((CASE WHEN f.rider_freq > z.rider_threshold THEN 1 ELSE 0 END) * f.rider_mean) as rider_est, 
+((CASE WHEN f.stop_charges_freq > z.stop_charges_threshold THEN 1 ELSE 0 END) * f.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f.storage_freq > z.storage_threshold THEN 1 ELSE 0 END) * f.storage_mean) as storage_est
+FROM
+(SELECT d.transportation_mode, d.segment, d.source_location_key, d.destination_location_key, d.currency_code, d.seg_od_counts,
+(d.wash_cnt / d.seg_od_counts) as wash_freq, (d.deadhead_cnt / d.seg_od_counts) as deadhead_freq,
+(d.admin_cnt / d.seg_od_counts) as admin_freq, (d.congestion_cnt / d.seg_od_counts) as congestion_freq,
+(d.currency_cnt / d.seg_od_counts) as currency_freq, (d.detention_destination_cnt / d.seg_od_counts) as detention_destination_freq,
+(d.detention_source_cnt / d.seg_od_counts) as detention_source_freq, (d.discount_cnt / d.seg_od_counts) as discount_freq,
+(d.drayage_cnt / d.seg_od_counts) as drayage_freq, (d.equipment_cnt / d.seg_od_counts) as equipment_freq,
+(d.holiday_cnt / d.seg_od_counts) as holiday_freq, (d.layover_cnt / d.seg_od_counts) as layover_freq, (d.linehaul_spot_cnt / d.seg_od_counts) as linehaul_spot_freq,
+(d.other_cnt / d.seg_od_counts) as other_freq, (d.pallet_cnt / d.seg_od_counts) as pallet_freq,
+(d.tolls_cnt / d.seg_od_counts) as tolls_freq, (d.unloading_cnt / d.seg_od_counts) as unloading_freq,
+(d.radar_cnt / d.seg_od_counts) as radar_freq, (d.tonu_cnt / d.seg_od_counts) as tonu_freq, (d.switch_cnt / d.seg_od_counts) as switch_freq,
+(d.rider_cnt / d.seg_od_counts) as rider_freq, (d.stop_charges_cnt / d.seg_od_counts) as stop_charges_freq, (d.storage_cnt / d.seg_od_counts) as storage_freq,
+d.wash_mean, d.deadhead_mean, d.admin_mean, d.congestion_mean, d.currency_mean, d.detention_destination_mean, d.detention_source_mean,
+d.discount_mean, d.drayage_mean, d.equipment_mean, d.fuel_mean, d.holiday_mean, d.layover_mean, d.linehaul_mean, (d.linehaul_spot_mean - d.linehaul_mean) as linehaul_spot_mean , d.other_mean, d.pallet_mean, 
+d.tolls_mean, d.unloading_mean, d.radar_mean, d.tonu_mean, d.switch_mean, d.rider_mean, d.stop_charges_mean, d.storage_mean
+FROM
+(SELECT c.*, b.wash_cnt, b.deadhead_cnt, b.admin_cnt, b.congestion_cnt, b.currency_cnt, b.detention_destination_cnt,
+b.detention_source_cnt, b.discount_cnt, b.drayage_cnt, b.equipment_cnt, b.fuel_cnt, b.holiday_cnt, b.layover_cnt, b.linehaul_cnt, b.linehaul_spot_cnt, b.other_cnt, 
+b.pallet_cnt, b.tolls_cnt, b.unloading_cnt, b.radar_cnt, b.tonu_cnt, b.switch_cnt, b.rider_cnt,
+b.stop_charges_cnt, b.storage_cnt, 
+CASE WHEN b.wash_cnt = 0 THEN 0 ELSE (c.wash_total / b.wash_cnt) END as wash_mean,
+CASE WHEN b.deadhead_cnt = 0 THEN 0 ELSE (c.deadhead_total / b.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b.admin_cnt = 0 THEN 0 ELSE (c.admin_total / b.admin_cnt) END as admin_mean,
+CASE WHEN b.congestion_cnt = 0 THEN 0 ELSE (c.congestion_total / b.congestion_cnt) END as congestion_mean,
+CASE WHEN b.currency_cnt = 0 THEN 0 ELSE (c.currency_total / b.currency_cnt) END as currency_mean,
+CASE WHEN b.detention_destination_cnt = 0 THEN 0 ELSE (c.detention_destination_total / b.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b.detention_source_cnt = 0 THEN 0 ELSE (c.detention_source_total / b.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b.discount_cnt = 0 THEN 0 ELSE (c.discount_total / b.discount_cnt) END as discount_mean,
+CASE WHEN b.drayage_cnt = 0 THEN 0 ELSE (c.drayage_total / b.drayage_cnt) END as drayage_mean,
+CASE WHEN b.equipment_cnt = 0 THEN 0 ELSE (c.equipment_total / b.equipment_cnt) END as equipment_mean,
+CASE WHEN b.fuel_cnt = 0 THEN 0 ELSE (c.fuel_total / b.fuel_cnt) END as fuel_mean,
+CASE WHEN b.holiday_cnt = 0 THEN 0 ELSE (c.holiday_total / b.holiday_cnt) END as holiday_mean,
+CASE WHEN b.layover_cnt = 0 THEN 0 ELSE (c.layover_total / b.layover_cnt) END as layover_mean,
+CASE WHEN b.linehaul_cnt = 0 THEN 0 ELSE (c.linehaul_total / b.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b.linehaul_spot_cnt = 0 THEN 0 ELSE (c.linehaul_spot_total / b.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b.other_cnt = 0 THEN 0 ELSE (c.other_total / b.other_cnt) END as other_mean,
+CASE WHEN b.pallet_cnt = 0 THEN 0 ELSE (c.pallet_total / b.pallet_cnt) END as pallet_mean,
+CASE WHEN b.tolls_cnt = 0 THEN 0 ELSE (c.tolls_total / b.tolls_cnt) END as tolls_mean,
+CASE WHEN b.unloading_cnt = 0 THEN 0 ELSE (c.unloading_total / b.unloading_cnt) END as unloading_mean,
+CASE WHEN b.radar_cnt = 0 THEN 0 ELSE (c.radar_total / b.radar_cnt) END as radar_mean,
+CASE WHEN b.tonu_cnt = 0 THEN 0 ELSE (c.tonu_total / b.tonu_cnt) END as tonu_mean,
+CASE WHEN b.switch_cnt = 0 THEN 0 ELSE (c.switch_total / b.switch_cnt) END as switch_mean,
+CASE WHEN b.rider_cnt = 0 THEN 0 ELSE (c.rider_total / b.rider_cnt) END as rider_mean,
+CASE WHEN b.stop_charges_cnt = 0 THEN 0 ELSE (c.stop_charges_total / b.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b.storage_cnt = 0 THEN 0 ELSE (c.storage_total / b.storage_cnt) END as storage_mean
+FROM
+(SELECT g.transportation_mode, g.segment, g.source_location_key, g.destination_location_key, g.currency_code, COUNT(*) as seg_od_counts,
+SUM(g.wash) as wash_total, SUM(g.deadhead) as deadhead_total, SUM(g.admin) as admin_total, SUM(g.congestion) as congestion_total,
+SUM(g.currency) as currency_total, SUM(g.detention_destination) as detention_destination_total, SUM(g.detention_source) as detention_source_total,
+SUM(g.discount) as discount_total, SUM(g.drayage) as drayage_total, SUM(g.equipment) as equipment_total, SUM(g.fuel) as fuel_total, SUM(g.holiday) as holiday_total,
+SUM(g.layover) as layover_total, SUM(g.linehaul) as linehaul_total, SUM(g.linehaul_spot) as linehaul_spot_total, SUM(g.other) as other_total, SUM(g.pallet) as pallet_total, SUM(g.tolls) as tolls_total, 
+SUM(g.unloading) as unloading_total, SUM(g.radar) as radar_total, SUM(g.tonu) as tonu_total, SUM(g.switch) as switch_total, SUM(g.rider) as rider_total, 
+SUM(g.stop_charges) as stop_charges_total, SUM(g.storage) as storage_total
+FROM prd_product_ctl.ibp_historical_data_vw_mat g
+WHERE g.departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND transportation_mode <> 'Rail'
+GROUP BY g.transportation_mode, g.segment, g.source_location_key, g.destination_location_key, g.currency_code) c
+LEFT JOIN
+(SELECT a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code,
+SUM(a.wash_cnt) as wash_cnt, SUM(a.deadhead_cnt) as deadhead_cnt, SUM(a.admin_cnt) as admin_cnt,
+SUM(a.congestion_cnt) as congestion_cnt, SUM(a.currency_cnt) as currency_cnt, SUM(a.detention_destination_cnt) as detention_destination_cnt,
+SUM(a.detention_source_cnt) as detention_source_cnt, SUM(a.discount_cnt) as discount_cnt, SUM(a.drayage_cnt) as drayage_cnt, 
+SUM(a.equipment_cnt) as equipment_cnt,SUM(a.fuel_cnt) as fuel_cnt, SUM(a.holiday_cnt) as holiday_cnt, SUM(a.layover_cnt) as layover_cnt, SUM(a.linehaul_cnt) as linehaul_cnt, SUM(a.linehaul_spot_cnt) as linehaul_spot_cnt,
+SUM(a.other_cnt) as other_cnt, SUM(a.pallet_cnt) as pallet_cnt, SUM(a.tolls_cnt) as tolls_cnt, SUM(a.unloading_cnt) as unloading_cnt, SUM(a.radar_cnt) as radar_cnt,
+SUM(a.tonu_cnt) as tonu_cnt, SUM(a.switch_cnt) as switch_cnt, SUM(a.rider_cnt) as rider_cnt, SUM(a.stop_charges_cnt) as stop_charges_cnt,
+SUM(a.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND transportation_mode <> 'Rail' ) a
+GROUP BY a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code) b
+ON b.transportation_mode = c.transportation_mode AND b.segment = c.segment AND b.source_location_key = c.source_location_key 
+AND b.destination_location_key = c.destination_location_key AND b.currency_code = c.currency_code) d ) f
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z
+ON z.mode = f.transportation_mode
+UNION ALL
+SELECT f2.transportation_mode, f2.segment, f2.source_location_key, f2.destination_location_key, f2.currency_code, '5 digit zip' as 'analysis_level', f2.seg_od_counts as 'n',
+f2.linehaul_mean, ((CASE WHEN f2.linehaul_spot_freq > 0 THEN z2.linehaul_spot_threshold ELSE 0 END) * f2.linehaul_spot_mean) as linehaul_spot_est, f2.fuel_mean,
+((CASE WHEN f2.wash_freq > z2.wash_threshold THEN 1 ELSE 0 END) * f2.wash_mean) as wash_est, 
+((CASE WHEN f2.deadhead_freq > z2.deadhead_threshold THEN 1 ELSE 0 END) * f2.deadhead_mean) as deadhead_est,
+((CASE WHEN f2.admin_freq > z2.admin_threshold THEN 1 ELSE 0 END) * f2.admin_mean) as admin_est, 
+((CASE WHEN f2.congestion_freq > z2.congestion_threshold THEN 1 ELSE 0 END) * f2.congestion_mean) as congestion_est,
+((CASE WHEN f2.currency_freq > z2.currency_threshold THEN 1 ELSE 0 END) * f2.currency_mean) as currency_est, 
+((CASE WHEN f2.detention_destination_freq > z2.detention_destination_threshold THEN 1 ELSE 0 END) * f2.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f2.detention_source_freq > z2.detention_source_threshold THEN 1 ELSE 0 END) * f2.detention_source_mean) as detention_source_est, 
+((CASE WHEN f2.discount_freq > z2.discount_threshold THEN 1 ELSE 0 END) * f2.discount_mean) as discount_est,
+((CASE WHEN f2.drayage_freq > z2.drayage_threshold THEN 1 ELSE 0 END) * f2.drayage_mean) as drayage_est, 
+((CASE WHEN f2.equipment_freq > z2.equipment_threshold THEN 1 ELSE 0 END) * f2.equipment_mean) as equipment_est,
+((CASE WHEN f2.holiday_freq > z2.holiday_threshold THEN 1 ELSE 0 END) * f2.holiday_mean) as holiday_est, 
+((CASE WHEN f2.layover_freq > z2.layover_threshold THEN 1 ELSE 0 END) * f2.layover_mean) as layover_est,
+((CASE WHEN f2.other_freq > z2.other_threshold THEN 1 ELSE 0 END) * f2.other_mean) as other_est, 
+((CASE WHEN f2.pallet_freq > z2.pallet_threshold THEN 1 ELSE 0 END) * f2.pallet_mean) as pallet_est,
+((CASE WHEN f2.tolls_freq > z2.tolls_threshold THEN 1 ELSE 0 END) * f2.tolls_mean) as tolls_est, 
+((CASE WHEN f2.unloading_freq > z2.unloading_threshold THEN 1 ELSE 0 END) * f2.unloading_mean) as unloading_est,
+((CASE WHEN f2.radar_freq > z2.radar_threshold THEN 1 ELSE 0 END) * f2.radar_mean) as radar_est, 
+((CASE WHEN f2.tonu_freq > z2.tonu_threshold THEN 1 ELSE 0 END) * f2.tonu_mean) as tonu_est, 
+((CASE WHEN f2.switch_freq > z2.switch_threshold THEN 1 ELSE 0 END) * f2.switch_mean) as switch_est,
+((CASE WHEN f2.rider_freq > z2.rider_threshold THEN 1 ELSE 0 END) * f2.rider_mean) as rider_est, 
+((CASE WHEN f2.stop_charges_freq > z2.stop_charges_threshold THEN 1 ELSE 0 END) * f2.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f2.storage_freq > z2.storage_threshold THEN 1 ELSE 0 END) * f2.storage_mean) as storage_est
+FROM
+(SELECT d2.transportation_mode, d2.segment, d2.source_location_key, d2.destination_location_key, d2.currency_code, d2.seg_od_counts,
+(d2.wash_cnt / d2.seg_od_counts) as wash_freq, (d2.deadhead_cnt / d2.seg_od_counts) as deadhead_freq,
+(d2.admin_cnt / d2.seg_od_counts) as admin_freq, (d2.congestion_cnt / d2.seg_od_counts) as congestion_freq,
+(d2.currency_cnt / d2.seg_od_counts) as currency_freq, (d2.detention_destination_cnt / d2.seg_od_counts) as detention_destination_freq,
+(d2.detention_source_cnt / d2.seg_od_counts) as detention_source_freq, (d2.discount_cnt / d2.seg_od_counts) as discount_freq,
+(d2.drayage_cnt / d2.seg_od_counts) as drayage_freq, (d2.equipment_cnt / d2.seg_od_counts) as equipment_freq,
+(d2.holiday_cnt / d2.seg_od_counts) as holiday_freq, (d2.layover_cnt / d2.seg_od_counts) as layover_freq, (d2.linehaul_spot_cnt / d2.seg_od_counts) as linehaul_spot_freq,
+(d2.other_cnt / d2.seg_od_counts) as other_freq, (d2.pallet_cnt / d2.seg_od_counts) as pallet_freq,
+(d2.tolls_cnt / d2.seg_od_counts) as tolls_freq, (d2.unloading_cnt / d2.seg_od_counts) as unloading_freq,
+(d2.radar_cnt / d2.seg_od_counts) as radar_freq, (d2.tonu_cnt / d2.seg_od_counts) as tonu_freq, (d2.switch_cnt / d2.seg_od_counts) as switch_freq,
+(d2.rider_cnt / d2.seg_od_counts) as rider_freq, (d2.stop_charges_cnt / d2.seg_od_counts) as stop_charges_freq, (d2.storage_cnt / d2.seg_od_counts) as storage_freq,
+d2.wash_mean, d2.deadhead_mean, d2.admin_mean, d2.congestion_mean, d2.currency_mean, d2.detention_destination_mean, d2.detention_source_mean,
+d2.discount_mean, d2.drayage_mean, d2.equipment_mean, d2.fuel_mean, d2.holiday_mean, d2.layover_mean, d2.linehaul_mean, (d2.linehaul_spot_mean - d2.linehaul_mean) as linehaul_spot_mean, d2.other_mean, d2.pallet_mean, d2.tolls_mean, d2.unloading_mean,
+d2.radar_mean, d2.tonu_mean, d2.switch_mean, d2.rider_mean, d2.stop_charges_mean, d2.storage_mean
+FROM
+(SELECT c2.*, b2.wash_cnt, b2.deadhead_cnt, b2.admin_cnt, b2.congestion_cnt, b2.currency_cnt, b2.detention_destination_cnt,
+b2.detention_source_cnt, b2.discount_cnt, b2.drayage_cnt, b2.equipment_cnt, b2.fuel_cnt, b2.holiday_cnt, b2.layover_cnt, b2.linehaul_cnt, b2.linehaul_spot_cnt, b2.other_cnt, 
+b2.pallet_cnt, b2.tolls_cnt, b2.unloading_cnt, b2.radar_cnt, b2.tonu_cnt, b2.switch_cnt, b2.rider_cnt,
+b2.stop_charges_cnt, b2.storage_cnt, 
+CASE WHEN b2.wash_cnt = 0 THEN 0 ELSE (c2.wash_total / b2.wash_cnt) END as wash_mean,
+CASE WHEN b2.deadhead_cnt = 0 THEN 0 ELSE (c2.deadhead_total / b2.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b2.admin_cnt = 0 THEN 0 ELSE (c2.admin_total / b2.admin_cnt) END as admin_mean,
+CASE WHEN b2.congestion_cnt = 0 THEN 0 ELSE (c2.congestion_total / b2.congestion_cnt) END as congestion_mean,
+CASE WHEN b2.currency_cnt = 0 THEN 0 ELSE (c2.currency_total / b2.currency_cnt) END as currency_mean,
+CASE WHEN b2.detention_destination_cnt = 0 THEN 0 ELSE (c2.detention_destination_total / b2.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b2.detention_source_cnt = 0 THEN 0 ELSE (c2.detention_source_total / b2.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b2.discount_cnt = 0 THEN 0 ELSE (c2.discount_total / b2.discount_cnt) END as discount_mean,
+CASE WHEN b2.drayage_cnt = 0 THEN 0 ELSE (c2.drayage_total / b2.drayage_cnt) END as drayage_mean,
+CASE WHEN b2.equipment_cnt = 0 THEN 0 ELSE (c2.equipment_total / b2.equipment_cnt) END as equipment_mean,
+CASE WHEN b2.fuel_cnt = 0 THEN 0 ELSE (c2.fuel_total / b2.fuel_cnt) END as fuel_mean,
+CASE WHEN b2.holiday_cnt = 0 THEN 0 ELSE (c2.holiday_total / b2.holiday_cnt) END as holiday_mean,
+CASE WHEN b2.layover_cnt = 0 THEN 0 ELSE (c2.layover_total / b2.layover_cnt) END as layover_mean,
+CASE WHEN b2.linehaul_cnt = 0 THEN 0 ELSE (c2.linehaul_total / b2.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b2.linehaul_spot_cnt = 0 THEN 0 ELSE (c2.linehaul_spot_total / b2.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b2.other_cnt = 0 THEN 0 ELSE (c2.other_total / b2.other_cnt) END as other_mean,
+CASE WHEN b2.pallet_cnt = 0 THEN 0 ELSE (c2.pallet_total / b2.pallet_cnt) END as pallet_mean,
+CASE WHEN b2.tolls_cnt = 0 THEN 0 ELSE (c2.tolls_total / b2.tolls_cnt) END as tolls_mean,
+CASE WHEN b2.unloading_cnt = 0 THEN 0 ELSE (c2.unloading_total / b2.unloading_cnt) END as unloading_mean,
+CASE WHEN b2.radar_cnt = 0 THEN 0 ELSE (c2.radar_total / b2.radar_cnt) END as radar_mean,
+CASE WHEN b2.tonu_cnt = 0 THEN 0 ELSE (c2.tonu_total / b2.tonu_cnt) END as tonu_mean,
+CASE WHEN b2.switch_cnt = 0 THEN 0 ELSE (c2.switch_total / b2.switch_cnt) END as switch_mean,
+CASE WHEN b2.rider_cnt = 0 THEN 0 ELSE (c2.rider_total / b2.rider_cnt) END as rider_mean,
+CASE WHEN b2.stop_charges_cnt = 0 THEN 0 ELSE (c2.stop_charges_total / b2.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b2.storage_cnt = 0 THEN 0 ELSE (c2.storage_total / b2.storage_cnt) END as storage_mean
+FROM
+(SELECT g2.transportation_mode, g2.segment, g2.source_location_key, g2.destination_location_key, g2.currency_code, COUNT(*) as seg_od_counts,
+SUM(g2.wash) as wash_total, SUM(g2.deadhead) as deadhead_total, SUM(g2.admin) as admin_total, SUM(g2.congestion) as congestion_total,
+SUM(g2.currency) as currency_total, SUM(g2.detention_destination) as detention_destination_total, SUM(g2.detention_source) as detention_source_total,
+SUM(g2.discount) as discount_total, SUM(g2.drayage) as drayage_total, SUM(g2.equipment) as equipment_total, SUM(g2.fuel) as fuel_total, SUM(g2.holiday) as holiday_total,
+SUM(g2.layover) as layover_total, SUM(g2.linehaul) as linehaul_total, SUM(g2.linehaul_spot) as linehaul_spot_total, SUM(g2.other) as other_total, SUM(g2.pallet) as pallet_total, SUM(g2.tolls) as tolls_total, SUM(g2.unloading) as unloading_total,
+SUM(g2.radar) as radar_total, SUM(g2.tonu) as tonu_total, SUM(g2.switch) as switch_total, SUM(g2.rider) as rider_total, SUM(g2.stop_charges) as stop_charges_total,
+SUM(g2.storage) as storage_total
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as source_location_key, substr(destination_location_postal_code,1,5) as destination_location_key, currency_code,
+wash, deadhead, admin, congestion, currency, detention_destination, detention_source,
+discount, drayage, equipment, fuel, holiday, layover, linehaul, linehaul_spot, other, pallet, tolls, unloading,
+radar, tonu, switch, rider, stop_charges, storage
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope ) AND transportation_mode <> 'Rail' ) g2
+GROUP BY g2.transportation_mode, g2.segment, g2.source_location_key, g2.destination_location_key, g2.currency_code) c2
+LEFT JOIN
+(SELECT a2.transportation_mode, a2.segment, a2.source_location_key, a2.destination_location_key, a2.currency_code,
+SUM(a2.wash_cnt) as wash_cnt, SUM(a2.deadhead_cnt) as deadhead_cnt, SUM(a2.admin_cnt) as admin_cnt,
+SUM(a2.congestion_cnt) as congestion_cnt, SUM(a2.currency_cnt) as currency_cnt, SUM(a2.detention_destination_cnt) as detention_destination_cnt,
+SUM(a2.detention_source_cnt) as detention_source_cnt, SUM(a2.discount_cnt) as discount_cnt, SUM(a2.drayage_cnt) as drayage_cnt, 
+SUM(a2.equipment_cnt) as equipment_cnt, SUM(a2.fuel_cnt) as fuel_cnt, SUM(a2.holiday_cnt) as holiday_cnt, SUM(a2.layover_cnt) as layover_cnt, SUM(a2.linehaul_cnt) as linehaul_cnt, 
+SUM(a2.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a2.other_cnt) as other_cnt, SUM(a2.pallet_cnt) as pallet_cnt, SUM(a2.tolls_cnt) as tolls_cnt, SUM(a2.unloading_cnt) as unloading_cnt, 
+SUM(a2.radar_cnt) as radar_cnt, SUM(a2.tonu_cnt) as tonu_cnt, SUM(a2.switch_cnt) as switch_cnt, SUM(a2.rider_cnt) as rider_cnt, SUM(a2.stop_charges_cnt) as stop_charges_cnt,
+SUM(a2.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as source_location_key, substr(destination_location_postal_code,1,5) as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND transportation_mode <> 'Rail' ) a2
+GROUP BY a2.transportation_mode, a2.segment, a2.source_location_key, a2.destination_location_key, a2.currency_code) b2
+ON b2.transportation_mode = c2.transportation_mode AND b2.segment = c2.segment AND b2.source_location_key = c2.source_location_key 
+AND b2.destination_location_key = c2.destination_location_key AND b2.currency_code = c2.currency_code) d2 ) f2
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z2
+ON z2.mode = f2.transportation_mode
+UNION ALL
+SELECT f3.transportation_mode, f3.segment, f3.source_location_key, f3.destination_location_key, f3.currency_code, '3 digit zip' as 'analysis_level', f3.seg_od_counts as 'n',
+f3.linehaul_mean, ((CASE WHEN f3.linehaul_spot_freq > z3.linehaul_spot_threshold THEN f3.linehaul_spot_freq ELSE 0 END) * f3.linehaul_spot_mean) as linehaul_spot_est, f3.fuel_mean,
+((CASE WHEN f3.wash_freq > z3.wash_threshold THEN 1 ELSE 0 END) * f3.wash_mean) as wash_est, 
+((CASE WHEN f3.deadhead_freq > z3.deadhead_threshold THEN 1 ELSE 0 END) * f3.deadhead_mean) as deadhead_est,
+((CASE WHEN f3.admin_freq > z3.admin_threshold THEN 1 ELSE 0 END) * f3.admin_mean) as admin_est, 
+((CASE WHEN f3.congestion_freq > z3.congestion_threshold THEN 1 ELSE 0 END) * f3.congestion_mean) as congestion_est,
+((CASE WHEN f3.currency_freq > z3.currency_threshold THEN 1 ELSE 0 END) * f3.currency_mean) as currency_est, 
+((CASE WHEN f3.detention_destination_freq > z3.detention_destination_threshold THEN 1 ELSE 0 END) * f3.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f3.detention_source_freq > z3.detention_source_threshold THEN 1 ELSE 0 END) * f3.detention_source_mean) as detention_source_est, 
+((CASE WHEN f3.discount_freq > z3.discount_threshold THEN 1 ELSE 0 END) * f3.discount_mean) as discount_est,
+((CASE WHEN f3.drayage_freq > z3.drayage_threshold THEN 1 ELSE 0 END) * f3.drayage_mean) as drayage_est, 
+((CASE WHEN f3.equipment_freq > z3.equipment_threshold THEN 1 ELSE 0 END) * f3.equipment_mean) as equipment_est,
+((CASE WHEN f3.holiday_freq > z3.holiday_threshold THEN 1 ELSE 0 END) * f3.holiday_mean) as holiday_est, 
+((CASE WHEN f3.layover_freq > z3.layover_threshold THEN 1 ELSE 0 END) * f3.layover_mean) as layover_est,
+((CASE WHEN f3.other_freq > z3.other_threshold THEN 1 ELSE 0 END) * f3.other_mean) as other_est, 
+((CASE WHEN f3.pallet_freq > z3.pallet_threshold THEN 1 ELSE 0 END) * f3.pallet_mean) as pallet_est,
+((CASE WHEN f3.tolls_freq > z3.tolls_threshold THEN 1 ELSE 0 END) * f3.tolls_mean) as tolls_est, 
+((CASE WHEN f3.unloading_freq > z3.unloading_threshold THEN 1 ELSE 0 END) * f3.unloading_mean) as unloading_est,
+((CASE WHEN f3.radar_freq > z3.radar_threshold THEN 1 ELSE 0 END) * f3.radar_mean) as radar_est, 
+((CASE WHEN f3.tonu_freq > z3.tonu_threshold THEN 1 ELSE 0 END) * f3.tonu_mean) as tonu_est, 
+((CASE WHEN f3.switch_freq > z3.switch_threshold THEN 1 ELSE 0 END) * f3.switch_mean) as switch_est,
+((CASE WHEN f3.rider_freq > z3.rider_threshold THEN 1 ELSE 0 END) * f3.rider_mean) as rider_est, 
+((CASE WHEN f3.stop_charges_freq > z3.stop_charges_threshold THEN 1 ELSE 0 END) * f3.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f3.storage_freq > z3.storage_threshold THEN 1 ELSE 0 END) * f3.storage_mean) as storage_est
+FROM
+(SELECT d3.transportation_mode, d3.segment, d3.source_location_key, d3.destination_location_key, d3.currency_code, d3.seg_od_counts,
+(d3.wash_cnt / d3.seg_od_counts) as wash_freq, (d3.deadhead_cnt / d3.seg_od_counts) as deadhead_freq,
+(d3.admin_cnt / d3.seg_od_counts) as admin_freq, (d3.congestion_cnt / d3.seg_od_counts) as congestion_freq,
+(d3.currency_cnt / d3.seg_od_counts) as currency_freq, (d3.detention_destination_cnt / d3.seg_od_counts) as detention_destination_freq,
+(d3.detention_source_cnt / d3.seg_od_counts) as detention_source_freq, (d3.discount_cnt / d3.seg_od_counts) as discount_freq,
+(d3.drayage_cnt / d3.seg_od_counts) as drayage_freq, (d3.equipment_cnt / d3.seg_od_counts) as equipment_freq,
+(d3.holiday_cnt / d3.seg_od_counts) as holiday_freq, (d3.layover_cnt / d3.seg_od_counts) as layover_freq, (d3.linehaul_spot_cnt / d3.seg_od_counts) as linehaul_spot_freq,
+(d3.other_cnt / d3.seg_od_counts) as other_freq, (d3.pallet_cnt / d3.seg_od_counts) as pallet_freq,
+(d3.tolls_cnt / d3.seg_od_counts) as tolls_freq, (d3.unloading_cnt / d3.seg_od_counts) as unloading_freq,
+(d3.radar_cnt / d3.seg_od_counts) as radar_freq, (d3.tonu_cnt / d3.seg_od_counts) as tonu_freq, (d3.switch_cnt / d3.seg_od_counts) as switch_freq,
+(d3.rider_cnt / d3.seg_od_counts) as rider_freq, (d3.stop_charges_cnt / d3.seg_od_counts) as stop_charges_freq, (d3.storage_cnt / d3.seg_od_counts) as storage_freq,
+d3.wash_mean, d3.deadhead_mean, d3.admin_mean, d3.congestion_mean, d3.currency_mean, d3.detention_destination_mean, d3.detention_source_mean,
+d3.discount_mean, d3.drayage_mean, d3.equipment_mean, d3.fuel_mean, d3.holiday_mean, d3.layover_mean, d3.linehaul_mean, (d3.linehaul_spot_mean - d3.linehaul_mean) as linehaul_spot_mean, d3.other_mean, d3.pallet_mean, d3.tolls_mean, d3.unloading_mean,
+d3.radar_mean, d3.tonu_mean, d3.switch_mean, d3.rider_mean, d3.stop_charges_mean, d3.storage_mean
+FROM
+(SELECT c3.*, b3.wash_cnt, b3.deadhead_cnt, b3.admin_cnt, b3.congestion_cnt, b3.currency_cnt, b3.detention_destination_cnt,
+b3.detention_source_cnt, b3.discount_cnt, b3.drayage_cnt, b3.equipment_cnt, b3.fuel_cnt, b3.holiday_cnt, b3.layover_cnt, b3.linehaul_cnt, b3.linehaul_spot_cnt, b3.other_cnt, 
+b3.pallet_cnt, b3.tolls_cnt, b3.unloading_cnt, b3.radar_cnt, b3.tonu_cnt, b3.switch_cnt, b3.rider_cnt,
+b3.stop_charges_cnt, b3.storage_cnt, 
+CASE WHEN b3.wash_cnt = 0 THEN 0 ELSE (c3.wash_total / b3.wash_cnt) END as wash_mean,
+CASE WHEN b3.deadhead_cnt = 0 THEN 0 ELSE (c3.deadhead_total / b3.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b3.admin_cnt = 0 THEN 0 ELSE (c3.admin_total / b3.admin_cnt) END as admin_mean,
+CASE WHEN b3.congestion_cnt = 0 THEN 0 ELSE (c3.congestion_total / b3.congestion_cnt) END as congestion_mean,
+CASE WHEN b3.currency_cnt = 0 THEN 0 ELSE (c3.currency_total / b3.currency_cnt) END as currency_mean,
+CASE WHEN b3.detention_destination_cnt = 0 THEN 0 ELSE (c3.detention_destination_total / b3.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b3.detention_source_cnt = 0 THEN 0 ELSE (c3.detention_source_total / b3.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b3.discount_cnt = 0 THEN 0 ELSE (c3.discount_total / b3.discount_cnt) END as discount_mean,
+CASE WHEN b3.drayage_cnt = 0 THEN 0 ELSE (c3.drayage_total / b3.drayage_cnt) END as drayage_mean,
+CASE WHEN b3.equipment_cnt = 0 THEN 0 ELSE (c3.equipment_total / b3.equipment_cnt) END as equipment_mean,
+CASE WHEN b3.fuel_cnt = 0 THEN 0 ELSE (c3.fuel_total / b3.fuel_cnt) END as fuel_mean,
+CASE WHEN b3.holiday_cnt = 0 THEN 0 ELSE (c3.holiday_total / b3.holiday_cnt) END as holiday_mean,
+CASE WHEN b3.layover_cnt = 0 THEN 0 ELSE (c3.layover_total / b3.layover_cnt) END as layover_mean,
+CASE WHEN b3.linehaul_cnt = 0 THEN 0 ELSE (c3.linehaul_total / b3.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b3.linehaul_spot_cnt = 0 THEN 0 ELSE (c3.linehaul_spot_total / b3.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b3.other_cnt = 0 THEN 0 ELSE (c3.other_total / b3.other_cnt) END as other_mean,
+CASE WHEN b3.pallet_cnt = 0 THEN 0 ELSE (c3.pallet_total / b3.pallet_cnt) END as pallet_mean,
+CASE WHEN b3.tolls_cnt = 0 THEN 0 ELSE (c3.tolls_total / b3.tolls_cnt) END as tolls_mean,
+CASE WHEN b3.unloading_cnt = 0 THEN 0 ELSE (c3.unloading_total / b3.unloading_cnt) END as unloading_mean,
+CASE WHEN b3.radar_cnt = 0 THEN 0 ELSE (c3.radar_total / b3.radar_cnt) END as radar_mean,
+CASE WHEN b3.tonu_cnt = 0 THEN 0 ELSE (c3.tonu_total / b3.tonu_cnt) END as tonu_mean,
+CASE WHEN b3.switch_cnt = 0 THEN 0 ELSE (c3.switch_total / b3.switch_cnt) END as switch_mean,
+CASE WHEN b3.rider_cnt = 0 THEN 0 ELSE (c3.rider_total / b3.rider_cnt) END as rider_mean,
+CASE WHEN b3.stop_charges_cnt = 0 THEN 0 ELSE (c3.stop_charges_total / b3.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b3.storage_cnt = 0 THEN 0 ELSE (c3.storage_total / b3.storage_cnt) END as storage_mean
+FROM
+(SELECT g3.transportation_mode, g3.segment, g3.source_location_key, g3.destination_location_key, g3.currency_code, COUNT(*) as seg_od_counts,
+SUM(g3.wash) as wash_total, SUM(g3.deadhead) as deadhead_total, SUM(g3.admin) as admin_total, SUM(g3.congestion) as congestion_total,
+SUM(g3.currency) as currency_total, SUM(g3.detention_destination) as detention_destination_total, SUM(g3.detention_source) as detention_source_total,
+SUM(g3.discount) as discount_total, SUM(g3.drayage) as drayage_total, SUM(g3.equipment) as equipment_total, SUM(g3.fuel) as fuel_total, SUM(g3.holiday) as holiday_total,
+SUM(g3.layover) as layover_total, SUM(g3.linehaul) as linehaul_total, SUM(g3.linehaul_spot) as linehaul_spot_total, SUM(g3.other) as other_total, SUM(g3.pallet) as pallet_total, SUM(g3.tolls) as tolls_total, SUM(g3.unloading) as unloading_total,
+SUM(g3.radar) as radar_total, SUM(g3.tonu) as tonu_total, SUM(g3.switch) as switch_total, SUM(g3.rider) as rider_total, SUM(g3.stop_charges) as stop_charges_total,
+SUM(g3.storage) as storage_total
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as source_location_key, substr(destination_location_postal_code,1,3) as destination_location_key, currency_code,
+wash, deadhead, admin, congestion, currency, detention_destination, detention_source,
+discount, drayage, equipment, fuel, holiday, layover, linehaul, linehaul_spot, other, pallet, tolls, unloading,
+radar, tonu, switch, rider, stop_charges, storage
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope ) AND transportation_mode <> 'Rail' ) g3
+GROUP BY g3.transportation_mode, g3.segment, g3.source_location_key, g3.destination_location_key, g3.currency_code) c3
+LEFT JOIN
+(SELECT a3.transportation_mode, a3.segment, a3.source_location_key, a3.destination_location_key, a3.currency_code,
+SUM(a3.wash_cnt) as wash_cnt, SUM(a3.deadhead_cnt) as deadhead_cnt, SUM(a3.admin_cnt) as admin_cnt,
+SUM(a3.congestion_cnt) as congestion_cnt, SUM(a3.currency_cnt) as currency_cnt, SUM(a3.detention_destination_cnt) as detention_destination_cnt,
+SUM(a3.detention_source_cnt) as detention_source_cnt, SUM(a3.discount_cnt) as discount_cnt, SUM(a3.drayage_cnt) as drayage_cnt, 
+SUM(a3.equipment_cnt) as equipment_cnt, SUM(a3.fuel_cnt) as fuel_cnt, SUM(a3.holiday_cnt) as holiday_cnt, SUM(a3.layover_cnt) as layover_cnt, SUM(a3.linehaul_cnt) as linehaul_cnt,
+SUM(a3.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a3.other_cnt) as other_cnt,
+SUM(a3.pallet_cnt) as pallet_cnt, SUM(a3.tolls_cnt) as tolls_cnt, SUM(a3.unloading_cnt) as unloading_cnt, SUM(a3.radar_cnt) as radar_cnt,
+SUM(a3.tonu_cnt) as tonu_cnt, SUM(a3.switch_cnt) as switch_cnt, SUM(a3.rider_cnt) as rider_cnt, SUM(a3.stop_charges_cnt) as stop_charges_cnt,
+SUM(a3.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as source_location_key, substr(destination_location_postal_code,1,3) as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND transportation_mode <> 'Rail' ) a3
+GROUP BY a3.transportation_mode, a3.segment, a3.source_location_key, a3.destination_location_key, a3.currency_code) b3
+ON b3.transportation_mode = c3.transportation_mode AND b3.segment = c3.segment AND b3.source_location_key = c3.source_location_key 
+AND b3.destination_location_key = c3.destination_location_key AND b3.currency_code = c3.currency_code) d3 ) f3
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z3
+ON z3.mode = f3.transportation_mode
+UNION ALL
+SELECT f4.transportation_mode, f4.segment, f4.source_location_key, f4.destination_location_key, f4.currency_code, 'Segment' as 'analysis_level', f4.seg_od_counts as 'n',
+f4.linehaul_mean, ((CASE WHEN f4.linehaul_spot_freq > z4.linehaul_spot_threshold THEN f4.linehaul_spot_freq ELSE 0 END) * f4.linehaul_spot_mean) as linehaul_spot_est, f4.fuel_mean,
+((CASE WHEN f4.wash_freq > z4.wash_threshold THEN 1 ELSE 0 END) * f4.wash_mean) as wash_est, 
+((CASE WHEN f4.deadhead_freq > z4.deadhead_threshold THEN 1 ELSE 0 END) * f4.deadhead_mean) as deadhead_est,
+((CASE WHEN f4.admin_freq > z4.admin_threshold THEN 1 ELSE 0 END) * f4.admin_mean) as admin_est, 
+((CASE WHEN f4.congestion_freq > z4.congestion_threshold THEN 1 ELSE 0 END) * f4.congestion_mean) as congestion_est,
+((CASE WHEN f4.currency_freq > z4.currency_threshold THEN 1 ELSE 0 END) * f4.currency_mean) as currency_est, 
+((CASE WHEN f4.detention_destination_freq > z4.detention_destination_threshold THEN 1 ELSE 0 END) * f4.detention_destination_mean) as detention_destination_est,
+((CASE WHEN f4.detention_source_freq > z4.detention_source_threshold THEN 1 ELSE 0 END) * f4.detention_source_mean) as detention_source_est, 
+((CASE WHEN f4.discount_freq > z4.discount_threshold THEN 1 ELSE 0 END) * f4.discount_mean) as discount_est,
+((CASE WHEN f4.drayage_freq > z4.drayage_threshold THEN 1 ELSE 0 END) * f4.drayage_mean) as drayage_est, 
+((CASE WHEN f4.equipment_freq > z4.equipment_threshold THEN 1 ELSE 0 END) * f4.equipment_mean) as equipment_est,
+((CASE WHEN f4.holiday_freq > z4.holiday_threshold THEN 1 ELSE 0 END) * f4.holiday_mean) as holiday_est, 
+((CASE WHEN f4.layover_freq > z4.layover_threshold THEN 1 ELSE 0 END) * f4.layover_mean) as layover_est,
+((CASE WHEN f4.other_freq > z4.other_threshold THEN 1 ELSE 0 END) * f4.other_mean) as other_est, 
+((CASE WHEN f4.pallet_freq > z4.pallet_threshold THEN 1 ELSE 0 END) * f4.pallet_mean) as pallet_est,
+((CASE WHEN f4.tolls_freq > z4.tolls_threshold THEN 1 ELSE 0 END) * f4.tolls_mean) as tolls_est, 
+((CASE WHEN f4.unloading_freq > z4.unloading_threshold THEN 1 ELSE 0 END) * f4.unloading_mean) as unloading_est,
+((CASE WHEN f4.radar_freq > z4.radar_threshold THEN 1 ELSE 0 END) * f4.radar_mean) as radar_est, 
+((CASE WHEN f4.tonu_freq > z4.tonu_threshold THEN 1 ELSE 0 END) * f4.tonu_mean) as tonu_est, 
+((CASE WHEN f4.switch_freq > z4.switch_threshold THEN 1 ELSE 0 END) * f4.switch_mean) as switch_est,
+((CASE WHEN f4.rider_freq > z4.rider_threshold THEN 1 ELSE 0 END) * f4.rider_mean) as rider_est, 
+((CASE WHEN f4.stop_charges_freq > z4.stop_charges_threshold THEN 1 ELSE 0 END) * f4.stop_charges_mean) as stop_charges_est, 
+((CASE WHEN f4.storage_freq > z4.storage_threshold THEN 1 ELSE 0 END) * f4.storage_mean) as storage_est
+FROM
+(SELECT d4.transportation_mode, d4.segment, d4.source_location_key, d4.destination_location_key, d4.currency_code, d4.seg_od_counts,
+(d4.wash_cnt / d4.seg_od_counts) as wash_freq, (d4.deadhead_cnt / d4.seg_od_counts) as deadhead_freq,
+(d4.admin_cnt / d4.seg_od_counts) as admin_freq, (d4.congestion_cnt / d4.seg_od_counts) as congestion_freq,
+(d4.currency_cnt / d4.seg_od_counts) as currency_freq, (d4.detention_destination_cnt / d4.seg_od_counts) as detention_destination_freq,
+(d4.detention_source_cnt / d4.seg_od_counts) as detention_source_freq, (d4.discount_cnt / d4.seg_od_counts) as discount_freq,
+(d4.drayage_cnt / d4.seg_od_counts) as drayage_freq, (d4.equipment_cnt / d4.seg_od_counts) as equipment_freq,
+(d4.holiday_cnt / d4.seg_od_counts) as holiday_freq, (d4.layover_cnt / d4.seg_od_counts) as layover_freq, (d4.linehaul_spot_cnt / d4.seg_od_counts) as linehaul_spot_freq,
+(d4.other_cnt / d4.seg_od_counts) as other_freq, (d4.pallet_cnt / d4.seg_od_counts) as pallet_freq,
+(d4.tolls_cnt / d4.seg_od_counts) as tolls_freq, (d4.unloading_cnt / d4.seg_od_counts) as unloading_freq,
+(d4.radar_cnt / d4.seg_od_counts) as radar_freq, (d4.tonu_cnt / d4.seg_od_counts) as tonu_freq, (d4.switch_cnt / d4.seg_od_counts) as switch_freq,
+(d4.rider_cnt / d4.seg_od_counts) as rider_freq, (d4.stop_charges_cnt / d4.seg_od_counts) as stop_charges_freq, (d4.storage_cnt / d4.seg_od_counts) as storage_freq,
+d4.wash_mean, d4.deadhead_mean, d4.admin_mean, d4.congestion_mean, d4.currency_mean, d4.detention_destination_mean, d4.detention_source_mean,
+d4.discount_mean, d4.drayage_mean, d4.equipment_mean, d4.fuel_mean, d4.holiday_mean, d4.layover_mean, d4.linehaul_mean, (d4.linehaul_spot_mean - d4.linehaul_mean) as linehaul_spot_mean, d4.other_mean, d4.pallet_mean, d4.tolls_mean, d4.unloading_mean,
+d4.radar_mean, d4.tonu_mean, d4.switch_mean, d4.rider_mean, d4.stop_charges_mean, d4.storage_mean
+FROM
+(SELECT c4.*, b4.wash_cnt, b4.deadhead_cnt, b4.admin_cnt, b4.congestion_cnt, b4.currency_cnt, b4.detention_destination_cnt,
+b4.detention_source_cnt, b4.discount_cnt, b4.drayage_cnt, b4.equipment_cnt, b4.fuel_cnt, b4.holiday_cnt, b4.layover_cnt, b4.linehaul_cnt, b4.linehaul_spot_cnt, b4.other_cnt, 
+b4.pallet_cnt, b4.tolls_cnt, b4.unloading_cnt, b4.radar_cnt, b4.tonu_cnt, b4.switch_cnt, b4.rider_cnt,
+b4.stop_charges_cnt, b4.storage_cnt, 
+CASE WHEN b4.wash_cnt = 0 THEN 0 ELSE (c4.wash_total / b4.wash_cnt) END as wash_mean,
+CASE WHEN b4.deadhead_cnt = 0 THEN 0 ELSE (c4.deadhead_total / b4.deadhead_cnt) END as deadhead_mean,
+CASE WHEN b4.admin_cnt = 0 THEN 0 ELSE (c4.admin_total / b4.admin_cnt) END as admin_mean,
+CASE WHEN b4.congestion_cnt = 0 THEN 0 ELSE (c4.congestion_total / b4.congestion_cnt) END as congestion_mean,
+CASE WHEN b4.currency_cnt = 0 THEN 0 ELSE (c4.currency_total / b4.currency_cnt) END as currency_mean,
+CASE WHEN b4.detention_destination_cnt = 0 THEN 0 ELSE (c4.detention_destination_total / b4.detention_destination_cnt) END as detention_destination_mean,
+CASE WHEN b4.detention_source_cnt = 0 THEN 0 ELSE (c4.detention_source_total / b4.detention_source_cnt) END as detention_source_mean,
+CASE WHEN b4.discount_cnt = 0 THEN 0 ELSE (c4.discount_total / b4.discount_cnt) END as discount_mean,
+CASE WHEN b4.drayage_cnt = 0 THEN 0 ELSE (c4.drayage_total / b4.drayage_cnt) END as drayage_mean,
+CASE WHEN b4.equipment_cnt = 0 THEN 0 ELSE (c4.equipment_total / b4.equipment_cnt) END as equipment_mean,
+CASE WHEN b4.fuel_cnt = 0 THEN 0 ELSE (c4.fuel_total / b4.fuel_cnt) END as fuel_mean,
+CASE WHEN b4.holiday_cnt = 0 THEN 0 ELSE (c4.holiday_total / b4.holiday_cnt) END as holiday_mean,
+CASE WHEN b4.layover_cnt = 0 THEN 0 ELSE (c4.layover_total / b4.layover_cnt) END as layover_mean,
+CASE WHEN b4.linehaul_cnt = 0 THEN 0 ELSE (c4.linehaul_total / b4.linehaul_cnt) END as linehaul_mean,
+CASE WHEN b4.linehaul_spot_cnt = 0 THEN 0 ELSE (c4.linehaul_spot_total / b4.linehaul_spot_cnt) END as linehaul_spot_mean,
+CASE WHEN b4.other_cnt = 0 THEN 0 ELSE (c4.other_total / b4.other_cnt) END as other_mean,
+CASE WHEN b4.pallet_cnt = 0 THEN 0 ELSE (c4.pallet_total / b4.pallet_cnt) END as pallet_mean,
+CASE WHEN b4.tolls_cnt = 0 THEN 0 ELSE (c4.tolls_total / b4.tolls_cnt) END as tolls_mean,
+CASE WHEN b4.unloading_cnt = 0 THEN 0 ELSE (c4.unloading_total / b4.unloading_cnt) END as unloading_mean,
+CASE WHEN b4.radar_cnt = 0 THEN 0 ELSE (c4.radar_total / b4.radar_cnt) END as radar_mean,
+CASE WHEN b4.tonu_cnt = 0 THEN 0 ELSE (c4.tonu_total / b4.tonu_cnt) END as tonu_mean,
+CASE WHEN b4.switch_cnt = 0 THEN 0 ELSE (c4.switch_total / b4.switch_cnt) END as switch_mean,
+CASE WHEN b4.rider_cnt = 0 THEN 0 ELSE (c4.rider_total / b4.rider_cnt) END as rider_mean,
+CASE WHEN b4.stop_charges_cnt = 0 THEN 0 ELSE (c4.stop_charges_total / b4.stop_charges_cnt) END as stop_charges_mean,
+CASE WHEN b4.storage_cnt = 0 THEN 0 ELSE (c4.storage_total / b4.storage_cnt) END as storage_mean
+FROM
+(SELECT g4.transportation_mode, g4.segment, 'All' as source_location_key, 'All' as destination_location_key, g4.currency_code, COUNT(*) as seg_od_counts,
+SUM(g4.wash) as wash_total, SUM(g4.deadhead) as deadhead_total, SUM(g4.admin) as admin_total, SUM(g4.congestion) as congestion_total,
+SUM(g4.currency) as currency_total, SUM(g4.detention_destination) as detention_destination_total, SUM(g4.detention_source) as detention_source_total,
+SUM(g4.discount) as discount_total, SUM(g4.drayage) as drayage_total, SUM(g4.equipment) as equipment_total, SUM(g4.fuel) as fuel_total, SUM(g4.holiday) as holiday_total,
+SUM(g4.layover) as layover_total, SUM(g4.linehaul) as linehaul_total, SUM(g4.linehaul_spot) as linehaul_spot_total, SUM(g4.other) as other_total, SUM(g4.pallet) as pallet_total, SUM(g4.tolls) as tolls_total, 
+SUM(g4.unloading) as unloading_total, SUM(g4.radar) as radar_total, SUM(g4.tonu) as tonu_total, SUM(g4.switch) as switch_total, SUM(g4.rider) as rider_total, 
+SUM(g4.stop_charges) as stop_charges_total, SUM(g4.storage) as storage_total
+FROM prd_product_ctl.ibp_historical_data_vw_mat g4
+WHERE g4.departure_date > (SELECT date_add(now(), interval -12 months) as date_scope ) AND transportation_mode <> 'Rail' 
+GROUP BY g4.transportation_mode, g4.segment, g4.currency_code) c4
+LEFT JOIN
+(SELECT a4.transportation_mode, a4.segment, a4.source_location_key, a4.destination_location_key, a4.currency_code,
+SUM(a4.wash_cnt) as wash_cnt, SUM(a4.deadhead_cnt) as deadhead_cnt, SUM(a4.admin_cnt) as admin_cnt,
+SUM(a4.congestion_cnt) as congestion_cnt, SUM(a4.currency_cnt) as currency_cnt, SUM(a4.detention_destination_cnt) as detention_destination_cnt,
+SUM(a4.detention_source_cnt) as detention_source_cnt, SUM(a4.discount_cnt) as discount_cnt, SUM(a4.drayage_cnt) as drayage_cnt, 
+SUM(a4.equipment_cnt) as equipment_cnt, SUM(a4.fuel_cnt) as fuel_cnt, SUM(a4.holiday_cnt) as holiday_cnt, SUM(a4.layover_cnt) as layover_cnt, SUM(a4.linehaul_cnt) as linehaul_cnt,
+SUM(a4.linehaul_spot_cnt) as linehaul_spot_cnt, SUM(a4.other_cnt) as other_cnt,
+SUM(a4.pallet_cnt) as pallet_cnt, SUM(a4.tolls_cnt) as tolls_cnt, SUM(a4.unloading_cnt) as unloading_cnt, SUM(a4.radar_cnt) as radar_cnt,
+SUM(a4.tonu_cnt) as tonu_cnt, SUM(a4.switch_cnt) as switch_cnt, SUM(a4.rider_cnt) as rider_cnt, SUM(a4.stop_charges_cnt) as stop_charges_cnt,
+SUM(a4.storage_cnt) as storage_cnt
+FROM
+(SELECT transportation_mode, segment, 'All' as source_location_key, 'All' as destination_location_key, currency_code,
+CASE WHEN wash > 0 THEN 1 ELSE 0 END as wash_cnt,
+CASE WHEN deadhead > 0 THEN 1 ELSE 0 END as deadhead_cnt,
+CASE WHEN admin > 0 THEN 1 ELSE 0 END as admin_cnt,
+CASE WHEN congestion > 0 THEN 1 ELSE 0 END as congestion_cnt,
+CASE WHEN currency > 0 THEN 1 ELSE 0 END as currency_cnt,
+CASE WHEN detention_destination > 0 THEN 1 ELSE 0 END as detention_destination_cnt,
+CASE WHEN detention_source > 0 THEN 1 ELSE 0 END as detention_source_cnt,
+CASE WHEN discount > 0 THEN 1 ELSE 0 END as discount_cnt,
+CASE WHEN drayage > 0 THEN 1 ELSE 0 END as drayage_cnt,
+CASE WHEN equipment > 0 THEN 1 ELSE 0 END as equipment_cnt,
+CASE WHEN fuel > 0 THEN 1 ELSE 0 END as fuel_cnt,
+CASE WHEN holiday > 0 THEN 1 ELSE 0 END as holiday_cnt,
+CASE WHEN layover > 0 THEN 1 ELSE 0 END as layover_cnt,
+CASE WHEN linehaul > 0 THEN 1 ELSE 0 END as linehaul_cnt,
+CASE WHEN linehaul_spot > 0 THEN 1 ELSE 0 END as linehaul_spot_cnt,
+CASE WHEN other > 0 THEN 1 ELSE 0 END as other_cnt,
+CASE WHEN pallet > 0 THEN 1 ELSE 0 END as pallet_cnt,
+CASE WHEN tolls > 0 THEN 1 ELSE 0 END as tolls_cnt,
+CASE WHEN unloading > 0 THEN 1 ELSE 0 END as unloading_cnt,
+CASE WHEN radar > 0 THEN 1 ELSE 0 END as radar_cnt,
+CASE WHEN tonu > 0 THEN 1 ELSE 0 END as tonu_cnt,
+CASE WHEN switch > 0 THEN 1 ELSE 0 END as switch_cnt,
+CASE WHEN rider > 0 THEN 1 ELSE 0 END as rider_cnt,
+CASE WHEN stop_charges > 0 THEN 1 ELSE 0 END as stop_charges_cnt,
+CASE WHEN storage > 0 THEN 1 ELSE 0 END as storage_cnt
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND transportation_mode <> 'Rail' ) a4
+GROUP BY a4.transportation_mode, a4.segment, a4.source_location_key, a4.destination_location_key, a4.currency_code) b4
+ON b4.transportation_mode = c4.transportation_mode AND b4.segment = c4.segment AND b4.source_location_key = c4.source_location_key 
+AND b4.destination_location_key = c4.destination_location_key AND b4.currency_code = c4.currency_code) d4 ) f4
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds z4
+ON z4.mode = f4.transportation_mode
+
+
+### SEGMENT WEIGHTS ### Again, Rail excluded from 6 and 12 month views
+CREATE VIEW prd_product_ctl.ibp_weight_averages_6_months_vw AS
+SELECT transportation_mode, segment, source_location, destination_location, uom, '6 Month - Location' as analysis_level, (total_weight / records) as net_weight_mean
+FROM
+(SELECT transportation_mode, segment, source_location_key as source_location, destination_location_key as destination_location, net_weight_unit as uom, COUNT(net_weight) as records, SUM(net_weight) as total_weight
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -6 months) as date_scope) AND net_weight_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, net_weight_unit, source_location_key, destination_location_key) a
+UNION ALL
+SELECT transportation_mode, segment, source_location, destination_location, uom, '6 Month - 5 digit zip' as analysis_level, (total_weight / records) as net_weight_mean
+FROM
+(SELECT transportation_mode, segment, o5 as source_location, d5 as destination_location, net_weight_unit as uom, COUNT(net_weight) as records, SUM(net_weight) as total_weight
+FROM (SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as o5, substr(destination_location_postal_code,1,5) as d5, departure_date,
+net_weight_unit, net_weight FROM  prd_product_ctl.ibp_historical_data_vw_mat) a2
+WHERE departure_date > (SELECT date_add(now(), interval -6 months) as date_scope) AND net_weight_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, net_weight_unit, o5, d5) b2
+UNION ALL
+SELECT transportation_mode, segment, source_location, destination_location, uom, '6 Month - 3 digit zip' as analysis_level, (total_weight / records) as net_weight_mean
+FROM
+(SELECT transportation_mode, segment, o3 as source_location, d3 as destination_location, net_weight_unit as uom, COUNT(net_weight) as records, SUM(net_weight) as total_weight
+FROM (SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as o3, substr(destination_location_postal_code,1,3) as d3, departure_date,
+net_weight_unit, net_weight FROM  prd_product_ctl.ibp_historical_data_vw_mat) a3
+WHERE departure_date > (SELECT date_add(now(), interval -6 months) as date_scope) AND net_weight_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, net_weight_unit, o3, d3) b3
+UNION ALL
+SELECT transportation_mode, segment, 'All' as source_location, 'All' as destination_location, uom, '6 Month - Segment' as analysis_level, (total_weight / records) as net_weight_mean
+FROM
+(SELECT transportation_mode, segment, net_weight_unit as uom, COUNT(net_weight) as records, SUM(net_weight) as total_weight
+FROM  prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -6 months) as date_scope) AND net_weight_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, net_weight_unit) b4
+
+
+
+### LAST VALUES ###
+CREATE VIEW prd_product_ctl.ibp_cost_last_values_vw AS
+SELECT d.transportation_mode, d.segment, d.source_location_key, d.destination_location_key, d.currency_code, 'Last Value' as analysis_level, 1 as 'n',
+d.linehaul, d.linehaul_spot, d.fuel, d.wash, d.deadhead, d.admin, d.congestion, d.currency, d.detention_destination, d.detention_source, d.discount, d.drayage, d.equipment, d.holiday, 
+d.layover, d.other, d.pallet, d.tolls, d.unloading, d.radar, d.tonu, d.switch, d.rider, d.stop_charges, d.storage
+FROM prd_product_ctl.ibp_historical_data_vw_mat d
+INNER JOIN
+(SELECT a.min_order, b.max_departure, a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code
+FROM
+(SELECT MIN(freight_order_number) as min_order, transportation_mode, segment, source_location_key, destination_location_key, currency_code, departure_date
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+GROUP BY transportation_mode, segment, source_location_key, destination_location_key, currency_code, departure_date) a
+INNER JOIN
+(SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code, MAX(departure_date) as max_departure
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+GROUP BY transportation_mode, segment, source_location_key, destination_location_key, currency_code) b 
+ON b.max_departure = a.departure_date AND b.transportation_mode = a.transportation_mode AND b.segment = a.segment
+AND b.source_location_key = a.source_location_key AND b.destination_location_key = a.destination_location_key AND b.currency_code = a.currency_code) c
+ON c.min_order = d.freight_order_number AND c.max_departure = d.departure_date AND c.transportation_mode = d.transportation_mode
+AND c.segment = d.segment AND c.source_location_key = d.source_location_key AND c.destination_location_key = d.destination_location_key AND c.currency_code = d.currency_code
+WHERE d.departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+
+
+### 3 MONTH SELECTION ###
+CREATE VIEW prd_product_ctl.ibp_cost_3_months_final_vw AS
+SELECT c.transportation_mode, c.segment, c.source_location_key, c.destination_location_key, c.currency_code, CONCAT('3 Month - ', c.avg_analysis_level) as analysis_level, 
+CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN n ELSE 1 END as 'n',
+CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN c.linehaul_est ELSE c.linehaul END as linehaul_est, c.linehaul_spot_adj_est as linehaul_spot_adj_est, c.fuel as fuel_est,
+c.wash_est, c.deadhead_est, c.admin_est, c.congestion_est, c.currency_est, c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est,
+c.equipment_est, c.holiday_est, c.layover_est, c.other_est, c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est
+FROM
+(SELECT a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code, a.analysis_level, a.linehaul, b.analysis_level as avg_analysis_level, b.n,
+b.linehaul_est, ABS((a.linehaul - b.linehaul_est) / CASE WHEN b.linehaul_est = 0 THEN 1 ELSE b.linehaul_est END) as linehaul_deviation_from_mean,
+b.linehaul_spot_adj_est, a.fuel, b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.detention_destination_est, b.detention_source_est,
+b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est, b.unloading_est, b.radar_est,
+b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est, d.threshold
+FROM prd_product_ctl.ibp_cost_last_values_vw a
+INNER JOIN prd_product_ctl.ibp_cost_averages_3_months_vw b 
+ON b.transportation_mode = a.transportation_mode AND b.segment = a.segment AND b.source_location_key = a.source_location_key 
+AND b.destination_location_key = a.destination_location_key AND b.currency_code = a.currency_code
+INNER JOIN prd_product_ctl.ibp_last_value_thresholds d 
+ON a.transportation_mode = d.mode) c
+
+
+### ALL HISTORICAL COST ESTIMATES ###
+CREATE VIEW prd_product_ctl.ibp_historical_cost_estimates_vw AS
+SELECT * FROM prd_product_ctl.ibp_cost_3_months_final_vw
+UNION ALL
+SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code, CONCAT('3 Month - ', analysis_level) as analysis_level, n,
+linehaul_est, linehaul_spot_adj_est, fuel_est, wash_est, deadhead_est, admin_est, congestion_est, currency_est, detention_destination_est,
+detention_source_est, discount_est, drayage_est, equipment_est, holiday_est, layover_est, other_est, pallet_est, tolls_est, unloading_est, radar_est,
+tonu_est, switch_est, rider_est, stop_charges_est, storage_est FROM prd_product_ctl.ibp_cost_averages_3_months_vw WHERE analysis_level <> 'Location'
+UNION ALL
+SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code, CONCAT('6 Month - ', analysis_level) as analysis_level, n,
+linehaul_est, linehaul_spot_adj_est, fuel_est, wash_est, deadhead_est, admin_est, congestion_est, currency_est, detention_destination_est,
+detention_source_est, discount_est, drayage_est, equipment_est, holiday_est, layover_est, other_est, pallet_est, tolls_est, unloading_est, radar_est,
+tonu_est, switch_est, rider_est, stop_charges_est, storage_est FROM prd_product_ctl.ibp_cost_averages_6_months_vw
+UNION ALL
+SELECT transportation_mode, segment, source_location_key, destination_location_key, currency_code, CONCAT('12 Month - ', analysis_level) as analysis_level, n,
+linehaul_est, linehaul_spot_adj_est, fuel_est, wash_est, deadhead_est, admin_est, congestion_est, currency_est, detention_destination_est,
+detention_source_est, discount_est, drayage_est, equipment_est, holiday_est, layover_est, other_est, pallet_est, tolls_est, unloading_est, radar_est,
+tonu_est, switch_est, rider_est, stop_charges_est, storage_est FROM prd_product_ctl.ibp_cost_averages_12_months_vw
+
+### ALL HISTORICAL WEIGHT ESTIMATES ###
+CREATE VIEW prd_product_ctl.ibp_historical_weight_estimates_vw AS
+SELECT * FROM prd_product_ctl.ibp_weight_averages_3_months_vw
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_weight_averages_6_months_vw
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_weight_averages_12_months_vw
+
+
+### MILEAGE SCALE ###
+CREATE VIEW prd_product_ctl.ibp_mileage_scale_vw AS 
+SELECT transportation_mode, segment, distance_unit, distance_band, AVG(linehaul_per_unit) as linehaul_per_unit_mean, AVG(fuel_per_unit) as fuel_per_unit_mean
+FROM
+(SELECT transportation_mode, segment, distance_unit, CASE WHEN distance <= 25 THEN '0 - 25' ELSE CASE WHEN distance <= 50 THEN '25 - 50' 
+ELSE CASE WHEN distance <= 100 THEN '50 - 100' ELSE CASE WHEN distance <= 250 THEN '100 - 250' ELSE CASE WHEN distance <= 500 THEN '250 - 500' ELSE '500 +' END END END END END as distance_band, 
+linehaul / distance as linehaul_per_unit, fuel / distance as fuel_per_unit
+FROM prd_product_ctl.ibp_historical_data_vw_mat 
+WHERE linehaul > 0 AND distance_unit = 'MI' AND distance > 0 AND departure_date > (SELECT date_add(now(), interval -3 months) as date_scope) ) a
+GROUP BY transportation_mode, segment, distance_unit, distance_band
+
+
+### RAIL FREGHT BOOK ###
+CREATE VIEW prd_product_ctl.ibp_rail_freight_book_vw AS
+SELECT bu, origin_city, origin_state, destination_city, destination_state, (rate_total / rate_count) as rate
+FROM
+(SELECT bu, origin_city, origin_state, destination_city, destination_state, count(*) as rate_count, SUM(rate) as rate_total
+FROM
+(SELECT bu, origin_city, origin_state, destination_city, destination_state,
+CASE WHEN month(now()) = 4 THEN apr ELSE CASE WHEN month(now()) IN (5,6) then mj ELSE CASE WHEN month(now()) IN (7,8,9) then jas
+ELSE CASE WHEN month(now()) in (10,11,12) then ond ELSE CASE WHEN month(now()) IN (1,2,3) THEN jfm ELSE NULL END END END END END as rate
+FROM dev_internal_ctl_rail.rail_freight_book_final
+WHERE rate_year = (SELECT year(now()) + CASE WHEN month(now()) IN (1,2,3) THEN 1 ELSE 0 END) AND car_size = 'SM') a
+GROUP BY  bu, origin_city, origin_state, destination_city, destination_state) b
+
+
+### SEGMENT VOLUMES ###
+CREATE VIEW prd_product_ctl.ibp_volume_averages_12_months_vw AS
+SELECT transportation_mode, segment, source_location, destination_location, uom, '12 Month - Location' as analysis_level, (total_volume / records) as volume_mean
+FROM
+(SELECT transportation_mode, segment, source_location_key as source_location, destination_location_key as destination_location, volume_unit as uom, COUNT(volume) as records, SUM(volume) as total_volume
+FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND volume_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, volume_unit, source_location_key, destination_location_key) a
+UNION ALL
+SELECT transportation_mode, segment, source_location, destination_location, uom, '12 Month - 5 digit zip' as analysis_level, (total_volume / records) as volume_mean
+FROM
+(SELECT transportation_mode, segment, o5 as source_location, d5 as destination_location, volume_unit as uom, COUNT(volume) as records, SUM(volume) as total_volume
+FROM (SELECT transportation_mode, segment, substr(source_location_postal_code,1,5) as o5, substr(destination_location_postal_code,1,5) as d5, departure_date,
+volume_unit, volume FROM  prd_product_ctl.ibp_historical_data_vw_mat) a2
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND volume_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, volume_unit, o5, d5) b2
+UNION ALL
+SELECT transportation_mode, segment, source_location, destination_location, uom, '12 Month - 3 digit zip' as analysis_level, (total_volume / records) as volume_mean
+FROM
+(SELECT transportation_mode, segment, o3 as source_location, d3 as destination_location, volume_unit as uom, COUNT(volume) as records, SUM(volume) as total_volume
+FROM (SELECT transportation_mode, segment, substr(source_location_postal_code,1,3) as o3, substr(destination_location_postal_code,1,3) as d3, departure_date,
+volume_unit, volume FROM  prd_product_ctl.ibp_historical_data_vw_mat) a3
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND volume_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, volume_unit, o3, d3) b3
+UNION ALL
+SELECT transportation_mode, segment, 'All' as source_location, 'All' as destination_location, uom, '12 Month - Segment' as analysis_level, (total_volume / records) as volume_mean
+FROM
+(SELECT transportation_mode, segment, volume_unit as uom, COUNT(volume) as records, SUM(volume) as total_volume
+FROM  prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -12 months) as date_scope) AND volume_unit IS NOT NULL AND transportation_mode <> 'Rail'
+GROUP BY transportation_mode, segment, volume_unit) b4
+
+
+### ALL HISTORICAL VOLUME ESTIMATES ###
+CREATE VIEW prd_product_ctl.ibp_historical_volume_estimates_vw AS
+SELECT * FROM prd_product_ctl.ibp_volume_averages_3_months_vw
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_volume_averages_6_months_vw
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_volume_averages_12_months_vw
+
+
+
+### FUEL ESCALATOR VW ###
+CREATE VIEW prd_product_ctl.ibp_fuel_escalator_vw AS 
+SELECT 'na' region, 'usa' country, f.mode, f.segment, 'fuel' cost, c.month_id, (c.close_px / c.close_px_base) escalator 
+FROM 
+(SELECT mode, segment, 'HO' symbol_primary_join 
+FROM 
+(SELECT d3.ibp_mode as mode, d2.segment 
+FROM prd_product_ctl.ibp_segment_mapping_vw d2
+INNER JOIN prd_product_ctl.ibp_mode_mapping d3
+ON d3.system_mode = d2.transportation_mode
+WHERE d2.active = 'Y' AND d2.segment <> '') d 
+GROUP BY mode, segment) f 
+LEFT OUTER JOIN 
+(SELECT a.symbol_primary, a.symbol_type, b.symbol_type symbol_type_base, a.full_symbol_code, b.full_symbol_code full_symbol_code_base, a.month_id, 
+a.close_px, b.close_px close_px_base 
+FROM 
+(SELECT *, row_number() OVER (ORDER BY full_symbol_code ASC) month_id 
+FROM prd_internal_pconn.quotes_raw 
+WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUT' AND period_code = 'EOD' AND symbol_primary = 'HO' 
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope))) a 
+LEFT OUTER JOIN 
+(SELECT * FROM prd_internal_pconn.quotes_raw 
+WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUTCA' AND period_code = 'EOD' AND symbol_primary = 'HO'
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope))) b 
+ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primary = f.symbol_primary_join 
+ORDER BY c.month_id ASC, mode ASC, segment ASC
+
+
+### MAILROOM ESCALATORS ###
+CREATE VIEW prd_product_ctl.ibp_truck_escalators_vw AS
+SELECT lcase(c.region), lcase(c.country), lcase(c.mode), lcase(c.segment), lcase(c.cost_type), c.month_group, EXP(SUM(LN(c.escalator_2))) as escalator_against_base FROM
+(SELECT a.region, a.country, a.mode, a.segment, a.cost_type, a.month as month_group, (1 + ROUND(a.escalator,4)) as escalator, b.month as month_id, (1 + ROUND(b.escalator,4)) as escalator_2 
+FROM prd_product_ctl.ibp_rate_escalator_final a
+LEFT JOIN prd_product_ctl.ibp_rate_escalator_final b
+ON b.region = a.region AND b.country = a.country AND b.mode = a.mode
+AND b.segment = a.segment and b.cost_type = a.cost_type
+AND b.month <= a.month
+WHERE a.month <= 36 ) c
+GROUP BY region, country, mode, segment, cost_type, month_group
+ORDER BY c.region, c.country, c.mode, c.segment, c.cost_type, c.month_group
+
+
+### ALL ESCALATOR VW ###
+CREATE VIEW prd_product_ctl.ibp_all_escalators_vw AS
+SELECT * FROM prd_product_ctl.ibp_rate_escalator_final
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_fuel_escalator_vw
+
+
+### COSTS PER UNIT ###
+CREATE VIEW prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw AS
+SELECT a.*, b.uom, b.net_weight_mean as uom_amt FROM prd_product_ctl.ibp_historical_cost_estimates_vw_mat  a
+INNER JOIN prd_product_ctl.ibp_historical_weight_estimates_vw_mat b
+ON b.transportation_mode = a.transportation_mode AND b.segment = a.segment AND b.source_location = a.source_location
+AND b.destination_location = a.destination_location AND b.analysis_level = a.analysis_level
+UNION ALL
+SELECT a.*, c.uom, c.volume_mean as uom_amt FROM prd_product_ctl.ibp_historical_cost_estimates_vw_mat  a
+INNER JOIN prd_product_ctl.ibp_historical_volume_estimates_vw_mat c
+ON c.transportation_mode = a.transportation_mode AND c.segment = a.segment AND c.source_location = a.source_location
+AND c.destination_location = a.destination_location AND c.analysis_level = a.analysis_level
+
+SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat
+
+### ERROR LOGGING ###
+CREATE VIEW prd_product_ctl.ibp_error_log_1 AS
+SELECT *, 'NULL [mode] provided' as 'error_desc' 
+FROM prd_product_ctl.ibp_ask_final_vw
+WHERE mode IS NULL
+UNION ALL
+SELECT *, 'NULL [origination_location_id] and [origination_zip] provided' as 'error_desc' 
+FROM prd_product_ctl.ibp_ask_final_vw
+WHERE origination_location_id IS NULL AND source_location_postal_code IS NULL
+UNION ALL
+SELECT *, 'NULL [destination_location_id] and [destination_zip] provided' as 'error_desc' 
+FROM prd_product_ctl.ibp_ask_final_vw
+WHERE destination_location_id IS NULL AND destination_location_postal_code IS NULL
+UNION ALL 
+SELECT *, 'Invalid [mode] - [product_id] pair provided' as 'error_desc' 
+FROM prd_product_ctl.ibp_ask_final_vw
+WHERE segment IS NULL 
+AND mode IS NOT NULL 
+AND (origination_location_id IS NOT NULL OR source_location_postal_code IS NOT NULL)
+AND (destination_location_id IS NOT NULL OR destination_location_postal_code IS NOT NULL)
+
+
+### Ask - Hist JOIN ###
