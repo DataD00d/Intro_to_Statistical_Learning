@@ -1756,7 +1756,7 @@ GROUP BY freight_book_code, source_location_city, source_location_region, destin
 ORDER BY freight_book_code, source_location_city, destination_location_city
 
 
-SELECT * FROM prd_product_ctl.ibp_ask_hist_1
+
 ### Ask - Hist JOIN ###
 CREATE VIEW prd_product_ctl.ibp_ask_hist_1 AS
 SELECT b.region, a.*, b.analysis_level, b.n, b.currency_code, b.uom, b.uom_amt, b.linehaul_est, b.linehaul_spot_adj_est, b.fuel_est, 
@@ -2090,3 +2090,37 @@ INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as fuel_escal
 FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL') d
 ON d.region = c.region AND d.mode = c.mode AND d.segment = c.segment AND d.proj_month = c.proj_month) f
 
+
+### CONSOLIDATE RESULTS ###
+CREATE VIEW prd_product_ctl.ibp_costs_final_vw AS
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city as origination_city, 
+source_location_region as origination_state, source_location_postal_code as origination_zip, source_location_country as origination_country, 
+destination_location_id, reference_destination_id, destination_location_city as destination_city, destination_location_region as destination_state, 
+destination_location_postal_code as destination_zip, destination_location_country as destination_country, 
+product_id, profit_center, internal_external, NOW() as run_date, currency_code, uom, proj_month as period, 
+date_add(now(), interval proj_month months) as period_date, analysis_level as calculation_method, 
+AVG( (linehaul_est + linehaul_spot_adj_est + fuel_est + wash_est + deadhead_est + admin_est + congestion_est + currency_est + detention_destination_est + 
+detention_source_est + discount_est + drayage_est + equipment_est + holiday_est + layover_est + other_est + pallet_est + tolls_est +
+unloading_est + radar_est + tonu_est + switch_est + rider_est + stop_charges_est + storage_est) / uom_amt ) as total_cost_per_unit,
+AVG(linehaul_est / uom_amt) as linehaul_per_unit, AVG(linehaul_spot_adj_est / uom_amt) as linehaul_spot_adj_per_unit,
+AVG(fuel_est / uom_amt) as fuel_per_unit, AVG(wash_est / uom_amt) as wash_per_unit, AVG(deadhead_est / uom_amt) as deadhead_per_unit,
+AVG(admin_est / uom_amt) as admin_per_unit, AVG(congestion_est / uom_amt) as congestion_per_unit, 
+AVG(currency_est / uom_amt) as currency_per_unit, AVG(detention_destination_est / uom_amt) as detention_destination_per_unit,
+AVG(detention_source_est / uom_amt) as detention_source_per_unit, AVG(discount_est / uom_amt) as discount_per_unit, 
+AVG(drayage_est / uom_amt) as drayage_per_unit, AVG(equipment_est / uom_amt) as equipment_per_unit, 
+AVG(holiday_est / uom_amt) as holiday_per_unit, AVG(layover_est / uom_amt) as layover_per_unit, AVG(other_est / uom_amt) as other_per_unit,
+AVG(pallet_est / uom_amt) as pallet_per_unit, AVG(tolls_est / uom_amt) as tolls_per_unit, AVG(unloading_est / uom_amt) as unloading_per_unit,
+AVG(radar_est / uom_amt) as radar_per_unit, AVG(tonu_est / uom_amt) as tonu_per_unit, AVG(switch_est / uom_amt) as switch_per_unit,
+AVG(rider_est / uom_amt) as rider_per_unit, AVG(stop_charges_est / uom_amt) as stop_charges_per_unit, AVG(storage_est / uom_amt) as storage_per_unit
+FROM prd_product_ctl.ibp_ask_hist_14
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region, 
+source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, destination_location_city, 
+destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center, 
+internal_external, currency_code, uom, proj_month, analysis_level
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, origination_city, origination_state, origination_zip,
+origination_country, destination_location_id, reference_destination_id, destination_city, destination_state, destination_zip, destination_country,
+product_id, profit_center, internal_external, now() as run_date, NULL as currency, 
+FROM prd_product_ctl.ibp_error_log_ask
+
+SELECT * FROM prd_product_ctl.ibp_error_log_ask
