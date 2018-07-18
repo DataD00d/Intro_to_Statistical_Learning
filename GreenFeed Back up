@@ -1,16 +1,18 @@
 from pyspark.sql import SQLContext
 from pyspark.sql.types import DoubleType
 import pyspark
+import numpy
 import datetime
+import pandas
 sc = pyspark.SparkContext()
 sqlCtx = SQLContext(sc)
 
-#process id ps672610 / ImPyHa2017
 import pyodbc #required "pip" and "pip3" two commands in terminal: 1 - !pip install pyodbc and 2 - !pip3 install pyodbc
-cnxn = pyodbc.connect("Driver=/opt/cloudera/impalaodbc/lib/64/libclouderaimpalaodbc64.so;HOST=drona-impala.cargill.com;TrustedCerts=/opt/cloudera/impalaodbc/lib/64/cacerts.pem;CAIssuedCertNamesMismatch=1;AllowSelfSignedServerCert=1;SSL=1;KrbServiceName=impala;PORT=21050;KrbFQDN=_HOST;AuthMech=3;UseSASL=1;UseNativeQuery=0;autocommit=0;KrbFQDN=_HOST;UID=c675827@NA.CORP.CARGILL.COM;PWD=P1gBl0b!",autocommit=True)
+cnxn = pyodbc.connect("Driver=/opt/cloudera/impalaodbc/lib/64/libclouderaimpalaodbc64.so;HOST=drona-impala.cargill.com;TrustedCerts=/opt/cloudera/impalaodbc/lib/64/cacerts.pem;CAIssuedCertNamesMismatch=1;AllowSelfSignedServerCert=1;SSL=1;KrbServiceName=impala;PORT=21050;KrbFQDN=_HOST;AuthMech=3;UseSASL=1;UseNativeQuery=0;autocommit=0;KrbFQDN=_HOST;UID=ps672610@NA.CORP.CARGILL.COM;PWD=Python2018",autocommit=True)
 cursor = cnxn.cursor()
 
 from datetime import date
+import time
 from email.mime.text import MIMEText
 import smtplib, email.utils
 
@@ -18,27 +20,47 @@ import smtplib, email.utils
 #SET ENVIRONMENT / DB FOR GREENFEED ADMIN TABLES
 db = "dev_product_ctl_staging"
 
+#RUN TIME
+#---------------------------------------------------------------------------
+print(datetime.datetime.now())
+
 #CHECK FOR PENDING FILE IN HDFS
 #---------------------------------------------------------------------------
-sqlcode = "INSERT OVERWRITE TABLE " + db + ".greenfeed_batch SELECT * FROM " + db + ".greenfeed_batch_raw"
-sqlCtx.sql(sqlcode)
 sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_batch"
 cursor.execute(sqlcode)
+sqlcode = "INSERT OVERWRITE TABLE " + db + ".greenfeed_batch_staging SELECT * FROM " + db + ".greenfeed_batch_vw WHERE lower(status) = 'pending' ORDER BY batch_id ASC LIMIT 1"
+cursor.execute(sqlcode)
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_batch_staging"
+cursor.execute(sqlcode)
 
-sqlcode = "SELECT batch_id, input_file_name, datafile_id, updated FROM " + db + ".greenfeed_batch_vw WHERE status = 'pending' LIMIT 1"
+sqlcode = "SELECT batch_id, input_file_name, datafile_id, updated FROM " + db + ".greenfeed_batch_staging"
 pending_file = sqlCtx.sql(sqlcode)
 tmplst = [x["datafile_id"] for x in pending_file.rdd.collect()]
 data_file_id = str(tmplst).strip("['']")
 
+print("datafile_id = " + data_file_id)
+
 tmplst = [x["batch_id"] for x in pending_file.rdd.collect()]
 batch_id = str(tmplst).strip("['']")
+
+print("batch_id = " + batch_id)
 
 tmplst = [x["input_file_name"] for x in pending_file.rdd.collect()]
 file_name = str(tmplst).strip("['']")
 
+print("file_name = " + file_name)
+
+#data_file_date = file_name.split("-")[1]
+#data_file_date = data_file_date.split(".csv")[0]
+#data_file_date = data_file_date.strip()
+#data_file_str = data_file_date[0:4] + '/' + data_file_date[4:6] + '/' + data_file_date[6:8] + ' ' + data_file_date[8:10] + ':' + data_file_date[10:12] + ':00'
+#data_file_date = datetime.datetime.strptime(data_file_str, '%Y/%m/%d %H:%M:%S')
+#data_file_date = int(data_file_date.timestamp())
+
 time_stamp = datetime.datetime.now()
 if data_file_id == "":
-  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('No file detected', '" + str(time_stamp) + "')"
+  status = 'No File Found'
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - No pending file detected in greenfeed_batch_vw', '" + str(time_stamp) + "')"
   sqlCtx.sql(sqlcode)
   sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
   cursor.execute(sqlcode)
@@ -47,13 +69,36 @@ if data_file_id == "":
   quit()
 else:
   status = "Successful"
-  log = "Batch_id: " + batch_id + " detected for file: " + file_name + ". Mailroom process initiated with data_file_id: " + data_file_id
+  log = "HDFS PROCESSING - Batch_id: " + batch_id + " detected for file: " + file_name + ". Mailroom process initiated with data_file_id: " + data_file_id
   sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
   sqlCtx.sql(sqlcode)
   sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
   cursor.execute(sqlcode)
   sqlcode = "COMPUTE STATS " + db + ".greenfeed_log"
   cursor.execute(sqlcode)
+  sqlcode = "INSERT INTO " + db + ".greenfeed_batch VALUES('" + batch_id + "', '" + file_name + "', '" + data_file_id + "', 'Running', '" + str(time_stamp) + "')"
+  sqlCtx.sql(sqlcode)
+  sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_batch"
+  cursor.execute(sqlcode)
+  sqlcode = "COMPUTE STATS " + db + ".greenfeed_batch"
+  cursor.execute(sqlcode)
+  
+print("status = " + status)
+#---------------------------------------------------------------------------
+
+#REFRESH ADMIN TABLES
+#---------------------------------------------------------------------------
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_datafiles"
+cursor.execute(sqlcode)
+
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_transformation"
+cursor.execute(sqlcode)
+
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_datavalidation"
+cursor.execute(sqlcode)
+
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_datastewards"
+cursor.execute(sqlcode)
 #---------------------------------------------------------------------------
 
 
@@ -64,29 +109,47 @@ file_details = sqlCtx.sql(sqlcode)
 tmplst = [x["datasteward_id"] for x in file_details.rdd.collect()]
 data_steward_id = str(tmplst).strip("['']")
 
+print(data_steward_id)
+
 tmplst = [x["datavalidation_id"] for x in file_details.rdd.collect()]
 data_validation_id = str(tmplst).strip("['']")
+
+print(data_validation_id)
 
 tmplst = [x["datatransformation_id"] for x in file_details.rdd.collect()]
 data_transformation_id = str(tmplst).strip("['']")
 
+print(data_transformation_id)
+
 tmplst = [x["raw_db"] for x in file_details.rdd.collect()]
 raw_db = str(tmplst).strip("['']")
+
+print(raw_db)
 
 tmplst = [x["raw_table"] for x in file_details.rdd.collect()]
 raw_table = str(tmplst).strip("['']")
 
+print(raw_table)
+
 tmplst = [x["clean_db"] for x in file_details.rdd.collect()]
 clean_db = str(tmplst).strip("['']")
+
+print(clean_db)
 
 tmplst = [x["clean_table"] for x in file_details.rdd.collect()]
 clean_table = str(tmplst).strip("['']")
 
+print(clean_table)
+
 tmplst = [x["kudu_db"] for x in file_details.rdd.collect()]
 kudu_db = str(tmplst).strip("['']")
 
+print(kudu_db)
+
 tmplst = [x["kudu_table"] for x in file_details.rdd.collect()]
 kudu_table = str(tmplst).strip("['']")
+
+print(kudu_table)
 
 sqlcode = "SELECT datasteward_name, datasteward_email FROM " + db + ".greenfeed_datastewards_vw WHERE datasteward_id = " + data_steward_id + " AND active = 'y'"
 steward_detail = sqlCtx.sql(sqlcode)
@@ -94,34 +157,58 @@ tmplst = [x["datasteward_name"] for x in steward_detail.rdd.collect()]
 steward_name = str(tmplst).strip("[]")
 steward_name = steward_name.replace("'", '')
 
+print(steward_name)
+
 steward_email = [x["datasteward_email"] for x in steward_detail.rdd.collect()]
+
+print(steward_email)
 
 sqlcode = "SELECT datasteward_email FROM " + db + ".greenfeed_datastewards_vw WHERE datasteward_id = 0 AND active = 'y'"
 admin_detail = sqlCtx.sql(sqlcode)
 admin_email = [x["datasteward_email"] for x in admin_detail.rdd.collect()]
+
+print(admin_email)
 
 sqlcode = "SELECT sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step = 1 ORDER BY updated DESC LIMIT 1"
 tmpsql = sqlCtx.sql(sqlcode)
 tmplst = [x["sql"] for x in tmpsql.rdd.collect()]
 impala_insert = str(tmplst).strip("['']")
 
+print(impala_insert)
+
 sqlcode = "SELECT sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step = 2 ORDER BY updated DESC LIMIT 1"
 tmpsql = sqlCtx.sql(sqlcode)
 tmplst = [x["sql"] for x in tmpsql.rdd.collect()]
 kudu_insert = str(tmplst).strip("['']")
 
+print(kudu_insert)
+
+sqlcode = "SELECT step, sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step > 2 AND step < 20 ORDER BY step ASC"
+validation = sqlCtx.sql(sqlcode)
+trn_lst = [x["sql"] for x in validation.rdd.collect()]
+
+print(trn_lst)
+
+sqlcode = "SELECT step, sql FROM " + db + ".greenfeed_transformation_vw WHERE datatransformation_id = " + data_transformation_id + " AND active = 'y' AND step > 19 AND step < 30 ORDER BY step ASC"
+validation = sqlCtx.sql(sqlcode)
+mat_lst = [x["sql"] for x in validation.rdd.collect()]
+
+print(mat_lst)
+
 sqlcode = "SELECT test_description, sql FROM " + db + ".greenfeed_datavalidation_vw WHERE datavalidation_id = " + data_validation_id + " AND active = 'y'"
 validation = sqlCtx.sql(sqlcode)
 val_sql = [x["sql"] for x in validation.rdd.collect()]
-val_tst = [x["test_description"] for x in validation.rdd.collect()]
+val_lst = [x["test_description"] for x in validation.rdd.collect()]
+
+print(val_lst)
 
 time_stamp = datetime.datetime.now()
-if raw_db == "" or raw_table == "" or clean_db == "" or clean_table == "" or kudu_db == "" or kudu_table == "" or file_name == "" or steward_name == "" or steward_email == "" or impala_insert == "" or kudu_insert == "":
+if raw_db == "" or raw_table == "" or clean_db == "" or clean_table == "" or kudu_db == "" or kudu_table == "" or impala_insert == "":
   status = "Invalid file configuration"
-  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Invalid file configuration - Review greenfeed admin tables', '" + str(time_stamp) + "')"
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - Invalid file configuration - Review greenfeed admin tables " + "raw_db = " + raw_db + "raw_table = " + raw_table + "clean_db = " + clean_db + "clean_table = " + clean_table + "kudu_db = " + kudu_db + "kudu_table = " + kudu_table + "impala_insert = " + impala_insert + "', '" + str(time_stamp) + "')"
   sqlCtx.sql(sqlcode)
 else:
-  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('File configuration successful', '" + str(time_stamp) + "')"
+  sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - File configuration successful', '" + str(time_stamp) + "')"
   sqlCtx.sql(sqlcode)
   
 sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
@@ -149,16 +236,18 @@ if status == "Successful":
     
     if records == '0':
       status = "Data Validation Fail"
-      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('No data found following insert into: " + clean_db + "." + clean_table + "', '" + str(time_stamp) + "')"
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - No data found following insert into: " + clean_db + "." + clean_table + "', '" + str(time_stamp) + "')"
       sqlCtx.sql(sqlcode)
       val_notes = "* No data found in table " + clean_db + "." + clean_table + "following impala insert. Please carefully review the file name provided for this file: " + file_name
     else:
-      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Parquet Successful', '" + str(time_stamp) + "')"
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - Insert to Parquet Successful', '" + str(time_stamp) + "')"
       sqlCtx.sql(sqlcode)
     #-------------------------------------------
 
   except Exception as whoopsies:
     status = "Error"
+    error_step = "Insert to Parquet / Clean table"
+    error_sql = impala_insert
     log_error = whoopsies.args[0]
     log = "Error on Insert to Parquet - " + log_error.replace("'", "")
     log = log.replace("`", "")
@@ -170,20 +259,64 @@ cursor.execute(sqlcode)
 #---------------------------------------------------------------------------
 
 
+#OTHER TRANSFORMATION STEPS
+#---------------------------------------------------------------------------
+if status == "Successful":
+  trn_step = 0
+  for i in trn_lst:
+    trn_step = trn_step + 1
+    time_stamp = datetime.datetime.now()
+    sqlcode = str(i).strip("['']")
+    sqlcode = sqlcode.replace("~SQ~", "'")
+  
+    try:
+      sqlCtx.sql(sqlcode)
+      
+      log = "Additional data transformation step " + str(trn_step) + " Passed. sql code for test: "
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"','" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+      
+    except Exception: 
+      
+      try:
+        cursor.execute(sqlcode)
+      
+        log = "Additional data transformation step " + str(trn_step) + " Passed. sql code for test: "
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"','" + str(time_stamp) + "')"
+        sqlCtx.sql(sqlcode)
+        
+      except Exception as whoopsies:
+        status = "Error"
+        error_step = "Other Transformations"
+        error_sql = sqlcode
+        log_error = whoopsies.args[0]
+        log = "Error on data transformation step - " + str(trn_step) +" - " + log_error.replace("'", "")
+        log = log.replace("`", "")
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"', '" + str(time_stamp) + "')"
+        sqlCtx.sql(sqlcode)
+      
+    sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+    cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
 #UPSERT TO KUDU
 #---------------------------------------------------------------------------
 if status == "Successful":
+  time_stamp = datetime.datetime.now()
   if kudu_table == "N/A":
-    sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Kudu Not Applicable', '" + str(time_stamp) + "')"
+    sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - Insert to Kudu Not Applicable', '" + str(time_stamp) + "')"
     sqlCtx.sql(sqlcode)
   else:
-    time_stamp = datetime.datetime.now()
     try:
+      kudu_insert = kudu_insert.replace("~SQ~", "'")
       cursor.execute(kudu_insert)
-      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('Insert to Kudu successful', '" + str(time_stamp) + "')"
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - Insert to Kudu successful', '" + str(time_stamp) + "')"
       sqlCtx.sql(sqlcode)
     except Exception as whoopsies:
       status = "Error"
+      error_step = "Insert to Kudu table"
+      error_sql = kudu_insert
       log_error = whoopsies.args[0]
       log = "Error on Insert to Kudu - " + log_error
       sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
@@ -194,47 +327,93 @@ cursor.execute(sqlcode)
 #---------------------------------------------------------------------------
 
 
-#DATA VALIDATIONS
+#VIEW MATERIALIZATION STEPS
 #---------------------------------------------------------------------------
 if status == "Successful":
-  for i in val_sql:
+  mat_step = 0
+  for i in mat_lst:
+    mat_step = trn_step + 1
     time_stamp = datetime.datetime.now()
     sqlcode = str(i).strip("['']")
     sqlcode = sqlcode.replace("~SQ~", "'")
-    test = val_tst(i).strip("['']")
   
     try:
-      pass_fail = sqlCtx.sql(sqlcode)
+      sqlCtx.sql(sqlcode)
       
-      if pass_fail == "PASS":
-        val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed. sqlcode + " + sqlcode
-        log = "data validation check " + test + " Passed. sql code for test: "  + sqlcode
-        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"','" + str(time_stamp) + "')"
-        sqlCtx.sql(sqlcode)
-      else:
-        status = "Data Validation Fail"
-        val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed. sqlcode + " + sqlcode
-        log = "data validation check " + test + " Failed. sql code for test: "  + sqlcode
-        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
+      log = "View Materialization transformation step " + str(mat_step) + " Passed. sql code for test: "
+      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"','" + str(time_stamp) + "')"
+      sqlCtx.sql(sqlcode)
+      
+    except Exception: 
+      
+      try:
+        cursor.execute(sqlcode)
+      
+        log = "View Materialization transformation step " + str(mat_step) + " Passed. sql code for test: "
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"','" + str(time_stamp) + "')"
         sqlCtx.sql(sqlcode)
         
-    except Exception as whoopsies:
-      status = "Error"
-      log_error = whoopsies.args[0]
-      log = "Error on data validation check - " + test +" - " + log_error
-      sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('" + log +"', '" + str(time_stamp) + "')"
-      sqlCtx.sql(sqlcode)
+      except Exception as whoopsies:
+        status = "Error"
+        error_step = "View Materialization"
+        error_sql = sqlcode
+        log_error = whoopsies.args[0]
+        log = "Error on View Materialization step - " + str(mat_step) +" - " + log_error.replace("'", "")
+        log = log.replace("`", "")
+        sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"', '" + str(time_stamp) + "')"
+        sqlCtx.sql(sqlcode)
       
     sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
     cursor.execute(sqlcode)
 #---------------------------------------------------------------------------
 
 
+#OTHER DATA VALIDATIONS
+#---------------------------------------------------------------------------
+#if status == "Successful":
+  #val_notes = str("")
+  #for i in val_sql:
+    #time_stamp = datetime.datetime.now()
+    #sqlcode = str(i).strip("['']")
+    #sqlcode = sqlcode.replace("~SQ~", "'")
+    #test = val_tst(i).strip("['']")
+  
+    #try:
+      #pass_fail = sqlCtx.sql(sqlcode)
+      
+      #if pass_fail == "PASS":
+        #val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed."
+        #log = "data validation check " + test + " Passed."
+        #sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"','" + str(time_stamp) + "')"
+        #sqlCtx.sql(sqlcode)
+      #else:
+        #status = "Data Validation Fail"
+        #val_notes = val_notes + '\n' + "* Data Validation check " + test + " Passed. sqlcode + " + sqlcode
+        #log = "data validation check " + test + " Failed. sql code for test: "  + sqlcode
+        #sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"', '" + str(time_stamp) + "')"
+        #sqlCtx.sql(sqlcode)
+        
+    #except Exception as whoopsies:
+      #status = "Error"
+      #log_error = whoopsies.args[0]
+      #log = "Error on data validation check - " + test +" - " + log_error
+      #sqlcode = "INSERT INTO " + db + ".greenfeed_log VALUES('HDFS PROCESSING - " + log +"', '" + str(time_stamp) + "')"
+      #sqlCtx.sql(sqlcode)
+      
+    #sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_log"
+    #cursor.execute(sqlcode)
+#---------------------------------------------------------------------------
+
+
 #UPDATE BATCH STATUS
 #---------------------------------------------------------------------------
 time_stamp = datetime.datetime.now()
-sqlcode = "INSERT INTO " + db + ".greenfeed_batch_raw VALUES('" + batch_id + "', '" + file_name + "', '" + data_file_id + "', '" + status + "', '" + str(time_stamp) + "')"
+sqlcode = "INSERT INTO " + db + ".greenfeed_batch VALUES('" + batch_id + "', '" + file_name + "', '" + data_file_id + "', '" + status + "', '" + str(time_stamp) + "')"
 sqlCtx.sql(sqlcode)
+sqlcode = "INVALIDATE METADATA " + db + ".greenfeed_batch"
+cursor.execute(sqlcode)
+sqlcode = "COMPUTE STATS " + db + ".greenfeed_batch"
+cursor.execute(sqlcode)
 #---------------------------------------------------------------------------
 
 
@@ -249,21 +428,28 @@ if status == "Invalid file configuration" or status == "Error":
 else:
   email_group = steward_email
   
+if kudu_table == "N/A":
+  final_db = clean_db
+  final_table = clean_table
+else:
+  final_db = kudu_db
+  final_table = kudu_table
+  
 email_to = email_group
-email_from = "ctl_pdt@cargill.com"
+email_from = "CTL_Data_Mailroom@Cargill.com"
 email_subject = "GreenFeed Submission " + status + " for file: " + file_name
 
 #date_format = "%Y/%m/%d"
 email_space = ", "
 
 if status == "Successful":
-  data = "Your file submission has been successfully processed into the CTL data lake, location: " + kudu_db + "." + kudu_table
+  data = "Your file submission has been successfully processed into the CTL data lake, location: " + final_db + "." + final_table
 elif status == "Error":
-  data = "Your file submission has failed to load due to the exception noted below. The CTL data and analytics team will review the issue as soon as possible. " + '\n' + '\n' + log_error
+  data = "Your file submission has failed to load due to the exception noted below which occured at the " + error_step + " stage of processing. The CTL data and analytics team will review the issue as soon as possible. " + '\n' + '\n' + log_error + '\n' + '\n' + error_sql
 elif status == "Invalid file configuration":
-  data = "Your file submission has failed to load due to an incorrect or incomplete configuration. The CTL data and analytics team will review the issue as soon as possible."
+  data = "Your file submission has failed to load due to an incorrect or incomplete configuration. The CTL data and analytics team will review the issue as soon as possible." + '\n' + "raw_db = " + raw_db + '\n' + "raw_table = " + raw_table + '\n' + "clean_db = " + clean_db + '\n' + "clean_table = " + clean_table + '\n' + "kudu_db = " + kudu_db + '\n' + "kudu_table = " + kudu_table + '\n' + "impala_insert = " + impala_insert
 elif status == "Data Validation Fail":
-  data = "Your file submission has been processed into the CTL data lake, location: " + kudu_db + "." + kudu_table + "." + '\n' + " However, potential data validation issues have been detected, documented below. Please review the file and if required, provide an updated file. If the file is deemed appropriate then no action is required." +'\n' + '\n' + val_notes
+  data = "Your file submission has been processed into the CTL data lake, location: " + final_db + "." + final_table + "." + '\n' + " However, potential data validation issues have been detected, documented below. Please review the file and if required, provide an updated file. If the file is deemed appropriate then no action is required." +'\n' + '\n' + val_notes
 
 msg = MIMEText(data)
 msg['Subject'] = email_subject #+ " %s" % (date.today().strftime(date_format))
