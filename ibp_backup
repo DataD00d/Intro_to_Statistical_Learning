@@ -1,37 +1,42 @@
-# explore
-SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_vw
-WHERE source_location_key = '17440' 
-AND destination_location_key = '223341'
+################## IBP PRODUCT BELOW ##################
 
 
 ### ibp tablez ###
-SELECT * FROM prd_product_ctl_ibp_ask.md_transportation_lane WHERE mode IS NULL
+SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_vw 
+
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive 
+
+SELECT * FROM prd_product_ctl_ibp.ibp_costs_final_it WHERE calculation_method LIKE 'ERROR - Invalid%'
+
+SELECT COUNT(*) FROM prd_product_ctl_ibp_ask.md_transportation_lane WHERE destination_location_id IS NULL
 
 SELECT error_desc, COUNT(*) FROM prd_product_ctl.ibp_error_log_ask GROUP By error_desc
 
+SELECT error_desc, COUNT(*) FROM prd_product_ctl.ibp_error_log_rail_freight_book GROUP By error_desc
+
 SELECT * FROM prd_product_ctl.ibp_ask_final_vw_3 
 
-SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw 
+SELECT analysis_level, COUNT(*) FROM prd_product_ctl.ibp_ask_hist_10_mat GROUP BY analysis_level WHERE linehaul_est = 0 AND linehaul_spot_adj_est = 0
 
-SELECT * FROM prd_product_ctl.ibp_ask_hist_10_mat
-
-SELECT COUNT(*) FROM prd_product_ctl.ibp_ask_hist_11 WHERE analysis_level IS NULL
+SELECT * FROM prd_product_ctl.ibp_ask_hist_11
 
 SELECT * FROM prd_product_ctl.ibp_ask_hist_13_mat
 
 SELECT * FROM prd_product_ctl.ibp_charge_groups
 
-SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat 
+SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat
 
-SELECT * FROM prd_product_ctl.ibp_product_location_vw_mat 
+SELECT * FROM prd_product_ctl.ibp_product_location_vw_mat WHERE source_location_key = 'SP1ADF' AND destination_location_key = '2500032001'
 
 SELECT * FROM prd_product_ctl.ibp_product_global_vw_mat 
 
 SELECT * FROM prd_product_ctl.ibp_location_vw_mat
 
-SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE mode = 'Container'
+SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE transportation_mode IN ('TRUCK', 'Full Truck Load')
 
 SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_vw_mat
+
+SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw 
 
 SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat  WHERE analysis_level = '3 Month - Segment'
 
@@ -48,6 +53,11 @@ SELECT * FROM prd_product_ctl.ibp_last_value_thresholds
 SELECT * FROM prd_product_ctl.ibp_product_freight_book_mapping
 
 SELECT * FROM prd_product_ctl.ibp_all_escalators_vw WHERE cost_type = 'line haul' ORDER BY segment, `month`
+SELECT * FROM prd_product_ctl.ibp_escalators_container_clean
+
+SELECT * FROM prd_product_ctl.ibp_spillover_accessorials_wash_vw 
+
+SELECT * FROM prd_product_ctl.ibp_rate_escalator_final ORDER BY segment, `month`
 
 ### MATERIALIZE IBP VIEWS ###
 INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_data_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_data_vw
@@ -80,20 +90,45 @@ COMPUTE STATS prd_product_ctl.ibp_ask_hist_10_mat
 INSERT OVERWRITE TABLE prd_product_ctl.ibp_ask_hist_13_mat SELECT * FROM prd_product_ctl.ibp_ask_hist_13
 COMPUTE STATS prd_product_ctl.ibp_ask_hist_13_mat
 
+INSERT OVERWRITE TABLE prd_product_ctl_ibp.ibp_costs_final_it SELECT business_group, mode, origination_location_id, reference_origination_id,
+origination_city, origination_state, origination_zip, origination_country, destination_location_id, reference_destination_id, destination_city,
+destination_state, destination_zip, destination_country, product_id, profit_center, internal_external, run_date, currency_code, uom, period, period_date,
+calculation_method, total_cost_per_unit FROM prd_product_ctl.ibp_costs_final_vw
+COMPUTE STATS prd_product_ctl_ibp.ibp_costs_final_it
+
+INSERT INTO prd_product_ctl.ibp_costs_final_archive SELECT * FROM prd_product_ctl.ibp_costs_final_vw
+COMPUTE STATS prd_product_ctl.ibp_costs_final_archive
+
+
 
 ### ASK FINAL 1 ###
 CREATE VIEW prd_product_ctl.ibp_ask_final_vw_1 AS
-SELECT business_group, mode, source_location_key, origination_location_id, reference_origination_id, source_location_city, source_location_region, source_location_postal_code,
-source_location_country, destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
-destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code FROM
+SELECT business_group, mode, 
+CASE WHEN source_location_key IS NULL THEN 'Not Found' ELSE source_location_key END as source_location_key, 
+origination_location_id, reference_origination_id, 
+CASE WHEN source_location_city IS NULL THEN 'Not Found or Provided' ELSE source_location_city END as source_location_city, 
+CASE WHEN source_location_region IS NULL THEN 'Not Found or Provided' ELSE source_location_region END as source_location_region, 
+CASE WHEN source_location_postal_code IS NULL THEN 'Not Found or Provided' ELSE source_location_postal_code END as source_location_postal_code,
+CASE WHEN source_location_country IS NULL THEN 'Not Found or Provided' ELSE source_location_country END as source_location_country, 
+CASE WHEN destination_location_key IS NULL THEN 'Not Found' ELSE destination_location_key END as destination_location_key, 
+destination_location_id, reference_destination_id, 
+CASE WHEN destination_location_city IS NULL THEN 'Not Found or Provided' ELSE destination_location_city END as destination_location_city, 
+CASE WHEN destination_location_region IS NULL THEN 'Not Found or Provided' ELSE destination_location_region END as destination_location_region,
+CASE WHEN destination_location_postal_code IS NULL THEN 'Not Found or Provided' ELSE destination_location_postal_code END as destination_location_postal_code, 
+CASE WHEN destination_location_country IS NULL THEN 'Not Found or Provided' ELSE destination_location_country END as destination_location_country, 
+product_id, profit_center, internal_external, segment, freight_book_code FROM
 (SELECT h.*, CASE WHEN h.mode = 'Rail' THEN g.freight_book_code ELSE 'N/A' END as freight_book_code FROM
 (SELECT c.*, d.segment, d.stcc FROM
-(SELECT CASE WHEN a.business_group IS NULL THEN 'Not Provided' ELSE a.business_group END as business_group, initcap(a.mode) as mode, b.hist_location_key as source_location_key, a.origination_location_id, a.reference_origination_id,
+(SELECT CASE WHEN a.business_group IS NULL THEN 'Not Provided' ELSE a.business_group END as business_group, initcap(a.mode) as mode, b.hist_location_key as source_location_key, 
+CASE WHEN a.origination_location_id IS NULL THEN 'Not Provided' ELSE a.origination_location_id END as origination_location_id, 
+CASE WHEN a.reference_origination_id IS NULL THEN 'Not Provided' ELSE a.reference_origination_id END as reference_origination_id,
 CASE WHEN a.origination_city IS NULL OR trim(a.origination_city) = '' THEN b.city ELSE a.origination_city END as source_location_city,
 CASE WHEN a.origination_state IS NULL OR trim(a.origination_state) = '' THEN b.state ELSE a.origination_state END as source_location_region,
 CASE WHEN a.origination_zip IS NULL OR trim(a.origination_zip) = '' THEN b.zip ELSE a.origination_zip END as source_location_postal_code,
 CASE WHEN a.origination_country IS NULL OR trim(a.origination_country) = '' THEN b.country ELSE a.origination_country END as source_location_country,
-f.hist_location_key as destination_location_key, a.destination_location_id, a.reference_destination_id,
+f.hist_location_key as destination_location_key, 
+CASE WHEN a.destination_location_id IS NULL THEN 'Not Provided' ELSE a.destination_location_id END as destination_location_id, 
+CASE WHEN a.reference_destination_id IS NULL THEN 'Not Provided' ELSE a.reference_destination_id END as reference_destination_id,
 CASE WHEN a.destination_city IS NULL OR trim(a.destination_city) = '' THEN f.city ELSE a.destination_city END as destination_location_city,
 CASE WHEN a.destination_state IS NULL OR trim(a.destination_state) = '' THEN f.state ELSE a.destination_state END as destination_location_region,
 CASE WHEN a.destination_zip IS NULL OR trim(a.destination_zip) = '' THEN f.zip ELSE a.destination_zip END as destination_location_postal_code,
@@ -102,7 +137,11 @@ a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profi
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
 (SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
-FROM prd_product_ctl_ibp_ask.md_transportation_lane) a
+FROM prd_product_ctl_ibp_ask.md_transportation_lane 
+WHERE mode IS NOT NULL
+AND product_id IS NOT NULL
+AND ( (origination_location_id IS NOT NULL AND reference_origination_id IS NOT NULL) OR (origination_city IS NOT NULL AND origination_state IS NOT NULL AND origination_zip IS NOT NULL AND origination_country IS NOT NULL) )
+AND ( (destination_location_id IS NOT NULL AND reference_destination_id IS NOT NULL) OR (destination_city IS NOT NULL AND destination_state IS NOT NULL AND destination_zip IS NOT NULL AND destination_country IS NOT NULL) ) ) a
 LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'o') b
 ON b.join_location = a.origination_join
 LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'd') f
@@ -111,25 +150,43 @@ LEFT OUTER JOIN prd_product_ctl.ibp_product_location_vw_mat d
 ON d.product_no = c.product_id AND d.transportation_mode = c.mode 
 AND d.source_location_key = c.source_location_key AND d.destination_location_key = c.destination_location_key) h
 LEFT OUTER JOIN prd_product_ctl.ibp_product_freight_book_mapping g
-ON g.stcc = h.stcc) h
+ON g.stcc = h.stcc) j
+WHERE (source_location_key IS NOT NULL OR source_location_postal_code IS NOT NULL)
+AND (destination_location_key IS NOT NULL OR destination_location_postal_code IS NOT NULL)
 GROUP BY business_group, mode, source_location_key, origination_location_id, reference_origination_id, source_location_city, source_location_region, source_location_postal_code,
 source_location_country, destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
 destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code
 
 
+
 ### ASK FINAL 2 ###
 CREATE VIEW prd_product_ctl.ibp_ask_final_vw_2 AS
-SELECT business_group, mode, source_location_key, origination_location_id, reference_origination_id, source_location_city, source_location_region, source_location_postal_code,
-source_location_country, destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
-destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code FROM
+SELECT business_group, mode, 
+CASE WHEN source_location_key IS NULL THEN 'Not Found' ELSE source_location_key END as source_location_key, 
+origination_location_id, reference_origination_id, 
+CASE WHEN source_location_city IS NULL THEN 'Not Found or Provided' ELSE source_location_city END as source_location_city, 
+CASE WHEN source_location_region IS NULL THEN 'Not Found or Provided' ELSE source_location_region END as source_location_region, 
+CASE WHEN source_location_postal_code IS NULL THEN 'Not Found or Provided' ELSE source_location_postal_code END as source_location_postal_code,
+CASE WHEN source_location_country IS NULL THEN 'Not Found or Provided' ELSE source_location_country END as source_location_country, 
+CASE WHEN destination_location_key IS NULL THEN 'Not Found' ELSE destination_location_key END as destination_location_key, 
+destination_location_id, reference_destination_id, 
+CASE WHEN destination_location_city IS NULL THEN 'Not Found or Provided' ELSE destination_location_city END as destination_location_city, 
+CASE WHEN destination_location_region IS NULL THEN 'Not Found or Provided' ELSE destination_location_region END as destination_location_region,
+CASE WHEN destination_location_postal_code IS NULL THEN 'Not Found or Provided' ELSE destination_location_postal_code END as destination_location_postal_code, 
+CASE WHEN destination_location_country IS NULL THEN 'Not Found or Provided' ELSE destination_location_country END as destination_location_country, 
+product_id, profit_center, internal_external, segment, freight_book_code  FROM
 (SELECT h.*, CASE WHEN h.mode = 'Rail' THEN g.freight_book_code ELSE 'N/A' END as freight_book_code FROM
 (SELECT c.*, d.segment, d.stcc FROM
-(SELECT CASE WHEN a.business_group IS NULL THEN 'Not Provided' ELSE a.business_group END as business_group, initcap(a.mode) as mode, b.hist_location_key as source_location_key, a.origination_location_id, a.reference_origination_id,
+(SELECT CASE WHEN a.business_group IS NULL THEN 'Not Provided' ELSE a.business_group END as business_group, initcap(a.mode) as mode, b.hist_location_key as source_location_key, 
+CASE WHEN a.origination_location_id IS NULL THEN 'Not Provided' ELSE a.origination_location_id END as origination_location_id, 
+CASE WHEN a.reference_origination_id IS NULL THEN 'Not Provided' ELSE a.reference_origination_id END as reference_origination_id,
 CASE WHEN a.origination_city IS NULL OR trim(a.origination_city) = '' THEN b.city ELSE a.origination_city END as source_location_city,
 CASE WHEN a.origination_state IS NULL OR trim(a.origination_state) = '' THEN b.state ELSE a.origination_state END as source_location_region,
 CASE WHEN a.origination_zip IS NULL OR trim(a.origination_zip) = '' THEN b.zip ELSE a.origination_zip END as source_location_postal_code,
 CASE WHEN a.origination_country IS NULL OR trim(a.origination_country) = '' THEN b.country ELSE a.origination_country END as source_location_country,
-f.hist_location_key as destination_location_key, a.destination_location_id, a.reference_destination_id,
+f.hist_location_key as destination_location_key, 
+CASE WHEN a.destination_location_id IS NULL THEN 'Not Provided' ELSE a.destination_location_id END as destination_location_id, 
+CASE WHEN a.reference_destination_id IS NULL THEN 'Not Provided' ELSE a.reference_destination_id END as reference_destination_id,
 CASE WHEN a.destination_city IS NULL OR trim(a.destination_city) = '' THEN f.city ELSE a.destination_city END as destination_location_city,
 CASE WHEN a.destination_state IS NULL OR trim(a.destination_state) = '' THEN f.state ELSE a.destination_state END as destination_location_region,
 CASE WHEN a.destination_zip IS NULL OR trim(a.destination_zip) = '' THEN f.zip ELSE a.destination_zip END as destination_location_postal_code,
@@ -138,7 +195,11 @@ a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profi
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
 (SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
-FROM prd_product_ctl_ibp_ask.md_transportation_lane) a
+FROM prd_product_ctl_ibp_ask.md_transportation_lane
+WHERE mode IS NOT NULL
+AND product_id IS NOT NULL
+AND ( (origination_location_id IS NOT NULL AND reference_origination_id IS NOT NULL) OR (origination_city IS NOT NULL AND origination_state IS NOT NULL AND origination_zip IS NOT NULL AND origination_country IS NOT NULL) )
+AND ( (destination_location_id IS NOT NULL AND reference_destination_id IS NOT NULL) OR (destination_city IS NOT NULL AND destination_state IS NOT NULL AND destination_zip IS NOT NULL AND destination_country IS NOT NULL) ) ) a
 LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'o') b
 ON b.join_location = a.origination_join
 LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_location_vw_mat WHERE o_d = 'd') f
@@ -165,7 +226,7 @@ FROM (
 SELECT c2.*, d2.include FROM prd_product_ctl.ibp_ask_final_vw_1 c2
 LEFT JOIN
 (SELECT a2.*, b2.segment as segment_2, b2.freight_book_code as freight_book_code_2, 'N' as include FROM
-(SELECT * FROM prd_product_ctl.ibp_ask_final_vw_1 WHERE segment IS NULL) a2
+(SELECT * FROM prd_product_ctl.ibp_ask_final_vw_1 WHERE segment IS NULL ) a2
 INNER JOIN
 (SELECT * FROM prd_product_ctl.ibp_ask_final_vw_1 WHERE segment IS NOT NULL) b2
 ON b2.business_group = a2.business_group AND b2.mode = a2.mode AND b2.origination_location_id = a2.origination_location_id
@@ -185,7 +246,7 @@ AND d2.destination_location_city = c2.destination_location_city AND d2.destinati
 AND d2.destination_location_postal_code = c2.destination_location_postal_code AND d2.destination_location_country = c2.destination_location_country
 AND d2.product_id = c2.product_id AND d2.profit_center = c2.profit_center AND d2.internal_external = c2.internal_external
 WHERE c2.segment IS NULL AND include IS NULL) a
-FULL OUTER JOIN prd_product_ctl.ibp_ask_final_vw_2 b
+LEFT JOIN prd_product_ctl.ibp_ask_final_vw_2 b
 ON b.business_group = a.business_group AND b.mode = a.mode
 AND b.source_location_key = a.source_location_key AND b.origination_location_id = a.origination_location_id
 AND b.reference_origination_id = a.reference_origination_id AND b.source_location_city = a.source_location_city
@@ -195,7 +256,7 @@ AND b.destination_location_id = a.destination_location_id AND b.reference_destin
 AND b.destination_location_city = a.destination_location_city AND b.destination_location_region = a.destination_location_region
 AND b.destination_location_postal_code = a.destination_location_postal_code AND b.destination_location_country = a.destination_location_country
 AND b.product_id = a.product_id AND b.profit_center = a.profit_center AND b.internal_external = a.internal_external
-WHERE a.mode IS NOT NULL
+
 
 
 ### IBP HISTORICAL TOTAL SPEND SCRIPT ###
@@ -236,7 +297,7 @@ ON a3.charge_code = a2.rated_charge_type_key) a
 GROUP BY a.freight_order_number, a.rated_amount_currency) c
 ON c.freight_order_number = b.freight_order_number
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
-ON d.transportation_mode = b.ibp_mode AND d.means_of_transport = b.means_of_transport ) 
+ON d.transportation_mode = b.transportation_mode AND d.means_of_transport = b.means_of_transport ) 
 --BlueJay removed due lack of product information
 --UNION ALL
 --(SELECT 'BlueJay' as system, 'NA' as region, f.sid, CAST(from_unixtime(CAST(f.shp_plan_depart as bigint)) AS TIMESTAMP) departure_date, f.transport_mode, f.equipment_type, g.segment, f.origin_loc_code, f.origin_city, f.origin_state, f.origin_zip, substr(f.origin_zip,1,3) as o3,
@@ -263,7 +324,7 @@ CAST(h.tolls as float) as tolls, CAST(h.tonu as float) as tonu, CAST(h.unloading
 FROM 
 (SELECT k.bol, k.ship_date, k.mode, j.ibp_mode as ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, SUM(k.ship_qty) as ship_qty, k.uom, SUM(k.distance) as distance, k.currencytype, SUM(k.admin) as admin, SUM(k.congestion) as congestion,
 SUM(k.currency) as currency, SUM(k.deadhead) as deadhead, SUM(k.detention_destination) as detention_destination, SUM(k.detention_origin) as detention_source, SUM(k.discount) as discount, SUM(k.drayage) as drayage,
-SUM(k.equipment) as equipment, SUM(k.fuel) as fuel, SUM(k.holiday) as holiday, SUM(k.layover) as layover, SUM(CASE WHEN k.spot_rate_indicator = 'Auto Rated' THEN linehaul ELSE 0 END) as linehaul, 
+SUM(k.equipment) as equipment, SUM(k.fuel) as fuel, SUM(k.holiday) as holiday, SUM(k.layover) as layover, SUM(CASE WHEN k.spot_rate_indicator <> 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul, 
 SUM(CASE WHEN k.spot_rate_indicator = 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul_spot, SUM(k.other) as other, SUM(k.pallet) as pallet, SUM(k.preloading) as preloading,
 SUM(k.radar) as radar, SUM(k.rider) as rider, SUM(k.stop_charges) as stop_charges, SUM(k.storage) as storage, SUM(k.switch) as switch, SUM(k.tolls) as tolls, SUM(k.tonu) as tonu, SUM(k.unloading) as unloading, SUM(k.wash) as wash
 FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final k
@@ -273,6 +334,33 @@ WHERE k.uom IN ('LBS', 'GAL', 'MTN', 'KG')
 GROUP BY k.bol, k.ship_date, k.mode, j.ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, k.uom, k.currencytype) h
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) i
 ON i.transportation_mode = h.mode AND i.means_of_transport = h.equip ) 
+
+
+
+### HISTORICAL DATA FOR TABLEAU ###
+CREATE VIEW prd_product_ctl.ibp_historical_data_tableau AS
+SELECT d.*, f.product_id FROM
+(SELECT a.*, b.reference_origination_id, c.reference_destination_id FROM prd_product_ctl.ibp_historical_data_vw_mat a
+INNER JOIN 
+(SELECT source_location_key, reference_origination_id 
+FROM prd_product_ctl.ibp_ask_final_vw_3
+GROUP BY source_location_key, reference_origination_id) b
+ON b.source_location_key = a.source_location_key
+INNER JOIN 
+(SELECT destination_location_key, reference_destination_id 
+FROM prd_product_ctl.ibp_ask_final_vw_3
+GROUP BY destination_location_key, reference_destination_id) c
+ON c.destination_location_key = a.destination_location_key) d 
+INNER JOIN
+(SELECT freight_order_number, material_key as product_id 
+FROM dev_internal_ctl_truck.nata_sap_tm_material_allocation_route_detail_final
+GROUP BY freight_order_number, material_key
+UNION ALL
+SELECT master_bol_no, product_no as product_id
+FROM dev_internal_ctl_truck.ctl_shipment_fact
+GROUP BY master_bol_no, product_no) f 
+ON f.freight_order_number = d.freight_order_number
+WHERE d.linehaul > 0 OR d.linehaul_spot > 0
 
 
 
@@ -286,6 +374,7 @@ FROM prd_product_ctl.ibp_product_global_counts_vw
 GROUP BY system, region, transportation_mode, product_no) b
 ON b.system = a.system AND b.region = a.region AND b.transportation_mode = a.transportation_mode
 AND b.product_no = a.product_no AND b.max_count = a.shipment_count
+
 
 
 ### PRODUCT SCRIPT GLOBAL COUNTS ###
@@ -342,30 +431,39 @@ ON f.transportation_mode = c.mode_desc AND f.means_of_transport = c.equipment_ty
 GROUP BY g.ibp_mode, g.origin_id, g.dest_location_key, g.segment, g.product_no, g.stcc)
 
 
+
 ### IBP HISTORICAL LOCATIONz SCRIPT ###
 CREATE VIEW prd_product_ctl.ibp_location_vw AS
 SELECT 'SAP TM' as system, 'NA' as region, 'o' as o_d,
-source_location_key as hist_location_key, NULL as legacy_id, source_location_key as join_location, source_location_city as city, source_location_region as state, source_location_postal_code as zip, source_location_country as country
+source_location_key as hist_location_key, 'N/A' as legacy_id, source_location_key as join_location, source_location_city as city, source_location_region as state, source_location_postal_code as zip, source_location_country as country
 FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final
 GROUP BY source_location_key, source_location_city, source_location_region, source_location_postal_code, source_location_country
 UNION ALL
 SELECT 'SAP TM' as system, 'NA' as region, 'd' as o_d,
-destination_location_key, NULL as legacy_id, destination_location_key as join_location, destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country
+destination_location_key, 'N/A' as legacy_id, destination_location_key as join_location, destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country
 FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final
 GROUP BY destination_location_key, destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country
 UNION ALL
 SELECT 'RSTP' as system, 'NA' as region, 'o' as o_d,
-origin_id, NULL as 'origin_gds', origin_id as join_location, city, state, post_code, country
+origin_id, 'N/A' as 'origin_gds', origin_id as join_location, 
+CASE WHEN city IS NULL THEN 'Not Available' ELSE city END as city, 
+CASE WHEN state IS NULL THEN 'Not Available' ELSE state END as state, 
+CASE WHEN post_code IS NULL THEN 'Not Available' ELSE post_code END as post_code, 
+CASE WHEN country IS NULL THEN 'Not Available' ELSE country END as country
 FROM dev_internal_ctl_truck.ctl_origin 
 GROUP BY origin_id, city, state, post_code, country
 UNION ALL
 SELECT 'RSTP' as system, 'NA' as region, 'd' as o_d,
-CAST(location_key as string) as location_key, location_gds_no, location_gds_no as join_location, city, state, post_code, country
+CAST(location_key as string) as location_key, location_gds_no, location_gds_no as join_location, 
+CASE WHEN city IS NULL THEN 'Not Available' ELSE city END as city, 
+CASE WHEN state IS NULL THEN 'Not Available' ELSE state END as state, 
+CASE WHEN post_code IS NULL THEN 'Not Available' ELSE post_code END as post_code, 
+CASE WHEN country IS NULL THEN 'Not Available' ELSE country END as country
 FROM dev_internal_ctl_truck.ctl_location
 GROUP BY location_key, location_gds_no, city, state, post_code, country
 
 
-DROP VIEW prd_product_ctl.ibp_cost_averages_3_months_vw
+
 ### COST ESTIMATES VIEWS ### 3 MONTHS
 CREATE VIEW prd_product_ctl.ibp_cost_averages_3_months_vw AS
 SELECT f.region, f.transportation_mode, f.segment, f.source_location_key, f.destination_location_key, f.currency_code, 'Location' as 'analysis_level', f.seg_od_counts as 'n',
@@ -1480,17 +1578,19 @@ AND c.segment = d.segment AND c.source_location_key = d.source_location_key AND 
 WHERE d.departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
 
 
+
 ### 3 MONTH SELECTION ###
 CREATE VIEW prd_product_ctl.ibp_cost_3_months_final_vw AS
 SELECT c.region, c.transportation_mode, c.segment, c.source_location_key, c.destination_location_key, c.currency_code, CONCAT('3 Month - ', c.avg_analysis_level) as analysis_level, 
 CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN n ELSE 1 END as 'n',
-CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN c.linehaul_est ELSE c.linehaul END as linehaul_est, c.linehaul_spot_adj_est as linehaul_spot_adj_est, c.fuel as fuel_est,
+CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN c.linehaul_est ELSE c.linehaul END as linehaul_est, c.linehaul_spot_adj_est as linehaul_spot_adj_est, 
+CASE WHEN c.linehaul_deviation_from_mean > c.threshold THEN c.fuel_est ELSE c.fuel END as fuel_est,
 c.wash_est, c.deadhead_est, c.admin_est, c.congestion_est, c.currency_est, c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est,
 c.equipment_est, c.holiday_est, c.layover_est, c.other_est, c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est
 FROM
 (SELECT a.region, a.transportation_mode, a.segment, a.source_location_key, a.destination_location_key, a.currency_code, a.analysis_level, a.linehaul, b.analysis_level as avg_analysis_level, b.n,
 b.linehaul_est, ABS((a.linehaul - b.linehaul_est) / CASE WHEN b.linehaul_est = 0 THEN 1 ELSE b.linehaul_est END) as linehaul_deviation_from_mean,
-b.linehaul_spot_adj_est, a.fuel, b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.detention_destination_est, b.detention_source_est,
+b.linehaul_spot_adj_est, a.fuel, b.fuel_est, b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.detention_destination_est, b.detention_source_est,
 b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est, b.unloading_est, b.radar_est,
 b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est, d.threshold
 FROM prd_product_ctl.ibp_cost_last_values_vw a
@@ -1670,25 +1770,50 @@ ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primar
 ORDER BY c.month_id ASC, mode ASC, segment ASC
 
 
-### MAILROOM ESCALATORS ###
+
+### TRUCK ESCALATORS ###
 CREATE VIEW prd_product_ctl.ibp_truck_escalators_vw AS
-SELECT lcase(c.region), lcase(c.country), lcase(c.mode), lcase(c.segment), lcase(c.cost_type), c.month_group, EXP(SUM(LN(c.escalator_2))) as escalator_against_base FROM
+SELECT lcase(c.region) as region, lcase(c.country) as country, lcase(c.mode) as mode, lcase(c.segment) as segment, 
+lcase(c.cost_type) as cost_type, c.month_group, EXP(SUM(LN(c.escalator_2))) as escalator_against_base FROM
 (SELECT a.region, a.country, a.mode, a.segment, a.cost_type, a.month as month_group, (1 + ROUND(a.escalator,4)) as escalator, b.month as month_id, (1 + ROUND(b.escalator,4)) as escalator_2 
 FROM prd_product_ctl.ibp_rate_escalator_final a
 LEFT JOIN prd_product_ctl.ibp_rate_escalator_final b
 ON b.region = a.region AND b.country = a.country AND b.mode = a.mode
 AND b.segment = a.segment and b.cost_type = a.cost_type
 AND b.month <= a.month
-WHERE a.month <= 36 ) c
+WHERE a.month <= 36
+AND UCASE(a.mode) = 'TRUCK') c
 GROUP BY region, country, mode, segment, cost_type, month_group
-ORDER BY c.region, c.country, c.mode, c.segment, c.cost_type, c.month_group
+
+
+
+### RAIL ESCALATORS ###
+CREATE VIEW prd_product_ctl.ibp_rail_escalators_vw AS
+SELECT lcase(c.region) as region, lcase(c.country) as country, lcase(c.mode) as mode, lcase(c.segment) as segment, 
+lcase(c.cost_type) as cost_type, c.month_group, EXP(SUM(LN(c.escalator_2))) as escalator_against_base FROM
+(SELECT a.region, a.country, a.mode, a.segment, a.cost_type, a.month as month_group, (1 + ROUND(a.escalator,4)) as escalator, b.month as month_id, (1 + ROUND(b.escalator,4)) as escalator_2 
+FROM prd_product_ctl.ibp_rate_escalator_final a
+LEFT JOIN prd_product_ctl.ibp_rate_escalator_final b
+ON b.region = a.region AND b.country = a.country AND b.mode = a.mode
+AND b.segment = a.segment and b.cost_type = a.cost_type
+AND b.month <= a.month
+WHERE a.month <= 36
+AND UCASE(a.mode) = 'RAIL') c
+GROUP BY region, country, mode, segment, cost_type, month_group
+
 
 
 ### ALL ESCALATOR VW ###
-CREATE VIEW prd_product_ctl.ibp_all_escalators_vw AS
-SELECT * FROM prd_product_ctl.ibp_rate_escalator_final
+CREATE VIEW prd_product_ctl.ibp_all_escalators_vw AS 
+SELECT region, country, mode, segment, cost_type, month_group as `month`, escalator_against_base as escalator 
+FROM prd_product_ctl.ibp_truck_escalators_vw
 UNION ALL
+SELECT region, country, mode, segment, cost_type, month_group as `month`, escalator_against_base as escalator 
+FROM prd_product_ctl.ibp_rail_escalators_vw
+UNION ALL 
 SELECT * FROM prd_product_ctl.ibp_fuel_escalator_vw
+
+
 
 ### COSTS PER UNIT ###
 CREATE VIEW prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw AS
@@ -1702,7 +1827,6 @@ INNER JOIN prd_product_ctl.ibp_historical_volume_estimates_vw_mat c
 ON c.transportation_mode = a.transportation_mode AND c.segment = a.segment AND c.source_location = a.source_location
 AND c.destination_location = a.destination_location AND c.analysis_level = a.analysis_level
 
-SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat
 
 
 ### ERROR LOGGING ASK ###
@@ -1711,19 +1835,34 @@ SELECT *, 'ERROR - NULL [mode] provided' as 'error_desc'
 FROM prd_product_ctl_ibp_ask.md_transportation_lane
 WHERE mode IS NULL
 UNION ALL
-SELECT *, 'ERROR - NULL [origination_location_id] and [origination_zip] provided' as 'error_desc' 
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
-WHERE origination_location_id IS NULL AND origination_zip IS NULL 
-AND mode IS NOT NULL
-UNION ALL
-SELECT *, 'ERROR - NULL [destination_location_id] and [destination_zip] provided' as 'error_desc' 
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
-WHERE destination_location_id IS NULL AND destination_zip IS NULL
-AND mode IS NOT NULL
-UNION ALL 
 SELECT *, 'ERROR - NULL [product_id] provided' as 'error_desc' 
 FROM prd_product_ctl_ibp_ask.md_transportation_lane
-WHERE product_id IS NULL 
+WHERE product_id IS NULL
+AND mode IS NOT NULL
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city,
+source_location_region, source_location_postal_code, source_location_country, destination_location_id, reference_destination_id,
+destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center,
+internal_external, 'ERROR - Source Location Code not found' 
+FROM prd_product_ctl.ibp_ask_final_vw_2
+WHERE mode IS NOT NULL AND product_id IS NOT NULL AND source_location_postal_code IS NULL
+AND source_location_key = 'Not Found'
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city,
+source_location_region, source_location_postal_code, source_location_country, destination_location_id, reference_destination_id,
+destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center,
+internal_external, 'ERROR - Destination Location Code not found' 
+FROM prd_product_ctl.ibp_ask_final_vw_2
+WHERE mode IS NOT NULL AND product_id IS NOT NULL AND destination_location_postal_code IS NULL
+AND destination_location_key = 'Not Found'
+UNION ALL
+SELECT *, 'ERROR - Insufficient Location Details provided' as 'error_desc' 
+FROM prd_product_ctl_ibp_ask.md_transportation_lane
+WHERE Mode IS NOT NULL AND product_id IS NOT NULL AND
+( ( (origination_location_id IS NULL OR reference_origination_id IS NULL) 
+AND (origination_city IS NULL OR origination_state IS NULL OR origination_zip IS NULL OR origination_country IS NULL) ) OR
+( (destination_location_id IS NULL OR reference_destination_id IS NULL) 
+AND (destination_city IS NULL OR destination_state IS NULL OR destination_zip IS NULL OR destination_country IS NULL) ) )
 UNION ALL 
 SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city,
 source_location_region, source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, 
@@ -1731,14 +1870,16 @@ destination_location_city, destination_location_region, destination_location_pos
 product_id, profit_center, internal_external, 'ERROR - Invalid [mode] - [product_id] pair provided' as 'error_desc' 
 FROM prd_product_ctl.ibp_ask_final_vw_3
 WHERE segment IS NULL 
-AND mode IS NOT NULL 
-AND (origination_location_id IS NOT NULL OR source_location_postal_code IS NOT NULL)
-AND (destination_location_id IS NOT NULL OR destination_location_postal_code IS NOT NULL)
+
 
 
 ### ERROR LOGGING RAIL FREIGHT BOOK ###
 CREATE VIEW prd_product_ctl.ibp_error_log_rail_freight_book AS
-SELECT freight_book_code, source_location_city, source_location_region, destination_location_city, destination_location_region, 'ERROR - No freight book match found' as 'error_desc' FROM
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city as origination_city, 
+source_location_region as origination_state, source_location_postal_code as origination_zip, source_location_country as origination_country,
+destination_location_id, reference_destination_id, destination_location_city as destination_city, destination_location_region as destination_state, 
+destination_location_postal_code as destination_zip, destination_location_country as destination_country, product_id,
+profit_center, internal_external, CONCAT('ERROR - No match found for freight book: ', freight_book_code) as 'error_desc' FROM
 (SELECT a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
 a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
 a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
@@ -1752,8 +1893,40 @@ on b.commodity = a.freight_book_code AND b.origin_city = a.source_location_city 
 AND b.destination_city = a.destination_location_city AND b.destination_state = a.destination_location_region
 WHERE analysis_level IS NULL AND mode = 'Rail' AND freight_book_code IS NOT NULL) zz
 WHERE linehaul_est IS NULL
-GROUP BY freight_book_code, source_location_city, source_location_region, destination_location_city, destination_location_region
-ORDER BY freight_book_code, source_location_city, destination_location_city
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region, 
+source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, destination_location_city, 
+destination_location_region, destination_location_postal_code, destination_location_country, product_id,
+profit_center, internal_external, freight_book_code
+
+
+
+### ERROR LOGGING TRUCK MILEAGE SCALE ###
+CREATE VIEW prd_product_ctl.ibp_error_log_truck_mileage_scale AS
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city as origination_city, 
+source_location_region as origination_state, source_location_postal_code as origination_zip, source_location_country as origination_country,
+destination_location_id, reference_destination_id, destination_location_city as destination_city, destination_location_region as destination_state, 
+destination_location_postal_code as destination_zip, destination_location_country as destination_country, product_id,
+profit_center, internal_external, 
+CONCAT('ERROR - No distance found for: ', substr(source_location_postal_code,1,5), ', ', source_location_country, ' - ', 
+substr(destination_location_postal_code,1,5), ', ', destination_location_country ) as 'error_desc' 
+FROM
+(SELECT a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
+a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
+a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Mileage Scale' as analysis_level, 1 as n, 'USD' as currency_code, b.distance,
+0 as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
+0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
+0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
+FROM prd_product_ctl.ibp_ask_hist_11 a
+LEFT OUTER JOIN (SELECT * FROM dev_internal_ctl_truck.orig_dest_distances_final WHERE UCASE(mode) = 'TRUCK') b
+ON b.origination_zip_code = substr(a.source_location_postal_code,1,5) AND b.destination_zip_code = substr(a.destination_location_postal_code,1,5)
+AND b.origination_country = a.source_location_country AND b.destination_country = a.destination_location_country
+WHERE a.analysis_level IS NULL AND a.mode = 'Truck') zz
+WHERE distance IS NULL
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region, 
+source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, destination_location_city, 
+destination_location_region, destination_location_postal_code, destination_location_country, product_id,
+profit_center, internal_external, freight_book_code
 
 
 
@@ -1768,7 +1941,9 @@ FROM
 WHERE mode IS NOT NULL AND segment IS NOT NULL 
 AND (origination_location_id IS NOT NULL OR source_location_postal_code IS NOT NULL)
 AND (destination_location_id IS NOT NULL OR destination_location_postal_code IS NOT NULL) ) a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '3 Month - Location') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw 
+WHERE analysis_level = '3 Month - Location'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = a.source_location_key
 AND b.destination_location = a.destination_location_key
 
@@ -1781,7 +1956,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_1 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - Location') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - Location'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = a.source_location_key
 AND b.destination_location = a.destination_location_key
 WHERE a.analysis_level IS NULL
@@ -1795,7 +1971,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_2 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - Location') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - Location'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = a.source_location_key
 AND b.destination_location = a.destination_location_key
 WHERE a.analysis_level IS NULL
@@ -1809,7 +1986,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_3 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '3 Month - 5 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '3 Month - 5 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 5)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 5)
 WHERE a.analysis_level IS NULL
@@ -1823,7 +2001,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_4 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - 5 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - 5 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 5)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 5)
 WHERE a.analysis_level IS NULL
@@ -1837,7 +2016,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_5 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - 5 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - 5 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 5)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 5)
 WHERE a.analysis_level IS NULL
@@ -1851,7 +2031,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_6 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '3 Month - 3 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '3 Month - 3 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 3)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 3)
 WHERE a.analysis_level IS NULL
@@ -1865,7 +2046,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_7 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - 3 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '6 Month - 3 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 3)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 3)
 WHERE a.analysis_level IS NULL
@@ -1879,7 +2061,8 @@ b.wash_est, b.deadhead_est, b.admin_est, b.congestion_est, b.currency_est, b.det
 b.detention_source_est, b.discount_est, b.drayage_est, b.equipment_est, b.holiday_est, b.layover_est, b.other_est, b.pallet_est, b.tolls_est,
 b.unloading_est, b.radar_est, b.tonu_est, b.switch_est, b.rider_est, b.stop_charges_est, b.storage_est
 FROM prd_product_ctl.ibp_ask_hist_8 a
-LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - 3 digit zip') b
+LEFT OUTER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_per_unit_vw WHERE analysis_level = '12 Month - 3 digit zip'
+AND (linehaul_est <> 0 OR linehaul_spot_adj_est <> 0) ) b
 ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location = substr(a.source_location_postal_code,1, 3)
 AND b.destination_location = substr(a.destination_location_postal_code, 1, 3)
 WHERE a.analysis_level IS NULL
@@ -1888,14 +2071,6 @@ WHERE a.analysis_level IS NULL
 
 CREATE VIEW prd_product_ctl.ibp_ask_hist_10 AS
 SELECT *, 1 as analysis_level_code FROM prd_product_ctl.ibp_ask_hist_1 WHERE analysis_level IS NOT NULL
---UNION ALL
---SELECT 'N/A' as region, *, NULL as n, NULL as currency_code, NULL as uom, NULL as uom_amt, NULL as linehaul_est, NULL as linehaul_spot_adj_est,
---NULL as fuel_est, NULL as wash_est, NULL as deadhead_est, NULL as admin_est, NULL as congestion_est, NULL as currency_est,
---NULL as detention_destination_est, NULL as detention_source_est, NULL as discount_est, NULL as drayage_est,
---NULL as equipment_est, NULL as holiday_est, NULL as layover_est, NULL as other_est, NULL as pallet_est, NULL as tolls_est,
---NULL as unloading_est, NULL as radar_est, NULL as tonu_est, NULL as switch_est, NULL as rider_est, NULL as stop_charges_est, 
---NULL as storage_Est, NULL as analysis_level_code
---FROM prd_product_ctl.ibp_error_log_ask
 UNION ALL
 SELECT *, 2 as analysis_level_code FROM prd_product_ctl.ibp_ask_hist_2 WHERE analysis_level IS NOT NULL
 UNION ALL
@@ -1911,7 +2086,7 @@ SELECT *, 7 as analysis_level_code FROM prd_product_ctl.ibp_ask_hist_7 WHERE ana
 UNION ALL 
 SELECT *, 8 as analysis_level_code FROM prd_product_ctl.ibp_ask_hist_8 WHERE analysis_level IS NOT NULL
 UNION ALL 
-SELECT CASE WHEN region IS NULL then 'TBD' else region END as region, business_group, mode, source_location_key, origination_location_id,
+SELECT CASE WHEN region IS NULL then CASE WHEN source_location_country IN ('USA', 'US', 'CAN', 'CA', 'MEX', 'MX') THEN 'NA' ELSE 'TBD' END ELSE region END as region, business_group, mode, source_location_key, origination_location_id,
 reference_origination_id, source_location_city, source_location_region, source_location_postal_code, source_location_country, 
 destination_location_key, destination_location_id, reference_destination_id, destination_location_city, destination_location_region,
 destination_location_postal_code, destination_location_country, product_id, profit_center, internal_external, segment, freight_book_code,
@@ -1933,16 +2108,16 @@ currency_est, detention_destination_est, detention_source_est, discount_est, dra
 pallet_est, tolls_est, unloading_est, radar_est, tonu_est, switch_est, rider_est, stop_charges_est, storage_est FROM 
 (SELECT a.*, b.min_analysis FROM prd_product_ctl.ibp_ask_hist_10_mat a
 LEFT JOIN
-(SELECT region, business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region,
+(SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region,
 source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, 
 destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country,
 product_id, profit_center, internal_external, MIN(analysis_level_code) as min_analysis
 FROM prd_product_ctl.ibp_ask_hist_10_mat
-GROUP BY region, business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region,
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region,
 source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, 
 destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country,
 product_id, profit_center, internal_external) b 
-ON b.region = a.region AND b.business_group = a.business_group AND b.mode = a.mode AND b.origination_location_id = a.origination_location_id
+ON  b.business_group = a.business_group AND b.mode = a.mode AND b.origination_location_id = a.origination_location_id
 AND b.reference_origination_id = a.reference_origination_id AND b.source_location_city = a.source_location_city
 AND b.source_location_region = a.source_location_region AND b.source_location_postal_code = a.source_location_postal_code
 AND b.source_location_country = a.source_location_country AND b.destination_location_id = a.destination_location_id
@@ -2027,19 +2202,157 @@ b.rate as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est
 0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
 0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
 FROM prd_product_ctl.ibp_ask_hist_11 a
-LEFT OUTER JOIN prd_product_ctl.ibp_rail_freight_book_vw b
+INNER JOIN prd_product_ctl.ibp_rail_freight_book_vw b
 on b.commodity = a.freight_book_code AND b.origin_city = a.source_location_city AND b.origin_state = a.source_location_region
 AND b.destination_city = a.destination_location_city AND b.destination_state = a.destination_location_region
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat 
 WHERE transportation_mode = 'Rail' AND analysis_level = '3 Month - Segment') c
 ON c.region = UCASE(b.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
 WHERE a.analysis_level IS NULL AND a.mode = 'Rail' AND a.freight_book_code IS NOT NULL
+UNION ALL
+SELECT UCASE(a.region) as region, a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
+a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
+a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Container Rate Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.net_weight_mean as uom_amt,
+b.avg_total_price as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
+0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
+0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
+FROM 
+(SELECT a2.*, UCASE(a3.container_rate_book_country) as source_container_rate_book_country, 
+UCASE(a4.container_rate_book_country) as destination_container_rate_book_country 
+FROM 
+(SELECT *,
+CASE WHEN source_location_country IN ('USA', 'US') THEN CONCAT(source_location_city, ' ', source_location_region) ELSE source_location_city END as source_container_rate_book_city, 
+CASE WHEN destination_location_country IN ('USA', 'US') THEN CONCAT(destination_location_city, ' ', destination_location_region) ELSE destination_location_city END as destination_container_rate_book_city
+FROM prd_product_ctl.ibp_ask_hist_11) a2
+INNER JOIN prd_product_ctl.ibp_country_mapping a3
+ON UCASE(a3.system_country_code) = UCASE(a2.source_location_country)
+INNER JOIN prd_product_ctl.ibp_country_mapping a4
+ON UCASE(a4.system_country_code) = UCASE(a2.destination_location_country)
+WHERE analysis_level IS NULL AND mode = 'Container') a
+INNER JOIN prd_product_ctl.ibp_container_rate_book_clean  b
+ON UCASE(b.origin_city) = UCASE(a.source_container_rate_book_city) AND UCASE(b.origin_country) = a.source_container_rate_book_country AND
+UCASE(b.destination_city) = UCASE(a.destination_container_rate_book_city) AND UCASE(b.destination_country) = a.destination_container_rate_book_country
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat 
+WHERE transportation_mode = 'Container' AND analysis_level = '3 Month - Segment') c
+ON c.region = UCASE(a.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
 
 
 
-### FILL PROSPECTIVE BUSINESS ###
+### SPILL OVER ACCESSORIALS ###
+CREATE VIEW prd_product_ctl.ibp_spillover_accessorials_wash_vw AS
+SELECT k.product_id, k.transportation_mode, k.segment, CASE WHEN k.wash_freq > k.wash_threshold THEN wash_mean ELSE 0 END as wash_est FROM 
+(SELECT h.product_id, h.transportation_mode, h.segment, (h.wash_cnt / h.product_cnt) as wash_freq, j.wash_threshold, 
+CASE WHEN wash_cnt = 0 THEN 0 ELSE (h.wash_total / h.wash_cnt) END as wash_mean FROM
+(SELECT g.product_id, g.transportation_mode, g.segment, SUM(g.wash) as wash_total, SUM(wash_cnt) as wash_cnt, COUNT(g.wash) as product_cnt FROM
+(SELECT d.product_id, f.transportation_mode, f.segment, f.wash, CASE WHEN f.wash = 0 THEN 0 ELSE 1 END as wash_cnt FROM
+(SELECT c.product_id, c.freight_order_number FROM
+(SELECT a.product_id, b.freight_order_number FROM prd_product_ctl.ibp_ask_hist_12 a
+INNER JOIN dev_internal_ctl_truck.nata_sap_tm_material_allocation_route_detail_final b 
+ON b.material_key = a.product_id
+WHERE a.analysis_level IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book') ) c
+GROUP BY c.product_id, c.freight_order_number) d
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) f
+ON f.freight_order_number = d.freight_order_number) g 
+GROUP BY g.product_id, g.transportation_mode, g.segment) h
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds j
+ON j.mode = h.transportation_mode) k
+UNION ALL
+SELECT k.product_id, k.transportation_mode, k.segment, CASE WHEN k.wash_freq > k.wash_threshold THEN wash_mean ELSE 0 END as wash_est FROM 
+(SELECT h.product_id, h.transportation_mode, h.segment, (h.wash_cnt / h.product_cnt) as wash_freq, j.wash_threshold, 
+CASE WHEN wash_cnt = 0 THEN 0 ELSE (h.wash_total / h.wash_cnt) END as wash_mean FROM
+(SELECT g.product_id, g.transportation_mode, g.segment, SUM(g.wash) as wash_total, SUM(wash_cnt) as wash_cnt, COUNT(g.wash) as product_cnt FROM
+(SELECT d.product_id, f.transportation_mode, f.segment, f.wash, CASE WHEN f.wash = 0 THEN 0 ELSE 1 END as wash_cnt FROM
+(SELECT c.product_id, c.master_bol_no FROM
+(SELECT a.product_id, b.master_bol_no FROM prd_product_ctl.ibp_ask_hist_12 a
+INNER JOIN dev_internal_ctl_truck.ctl_shipment_fact b 
+ON b.product_no = a.product_id
+WHERE a.analysis_level IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book') ) c
+GROUP BY c.product_id, c.master_bol_no) d
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) f
+ON f.freight_order_number = d.master_bol_no) g 
+GROUP BY g.product_id, g.transportation_mode, g.segment) h
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds j
+ON j.mode = h.transportation_mode) k 
+
+
+
+CREATE VIEW prd_product_ctl.ibp_spillover_accessorials_detention_source_vw AS
+SELECT  g.mode, g.segment, g.source_location_key, CASE WHEN g.detention_source_freq > g.detention_source_threshold THEN detention_source_mean ELSE 0 END as detention_source_est FROM 
+(SELECT d.mode, d.segment, d.source_location_key, (d.detention_source_cnt / d.shipment_cnt) as detention_source_freq, f.detention_source_threshold, 
+CASE WHEN d.detention_source_cnt = 0 THEN 0 ELSE (d.detention_source_total / d.detention_source_cnt) END as detention_source_mean FROM
+(SELECT c.mode, c.segment, source_location_key, SUM(c.detention_source) as detention_source_total, SUM(c.detention_source_cnt) as detention_source_cnt, 
+COUNT(c.detention_source) as shipment_cnt FROM
+(SELECT a.mode, a.segment, a.source_location_key, b.detention_source, 
+CASE WHEN b.detention_source = 0 THEN 0 ELSE 1 END as detention_source_cnt FROM 
+(SELECT mode, segment, source_location_key FROM prd_product_ctl.ibp_ask_hist_12 
+WHERE analysis_level IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book')
+GROUP BY mode, segment, source_location_key) a
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) b
+ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.source_location_key = a.source_location_key ) c
+GROUP BY  c.mode, c.segment, c.source_location_key) d
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds f
+ON f.mode = d.mode) g 
+
+
+
+CREATE VIEW prd_product_ctl.ibp_spillover_accessorials_detention_destination_vw AS
+SELECT  g.mode, g.segment, g.destination_location_key, CASE WHEN g.detention_destination_freq > g.detention_destination_threshold THEN detention_destination_mean ELSE 0 END as detention_destination_est FROM 
+(SELECT d.mode, d.segment, d.destination_location_key, (d.detention_destination_cnt / d.shipment_cnt) as detention_destination_freq, f.detention_destination_threshold, 
+CASE WHEN d.detention_destination_cnt = 0 THEN 0 ELSE (d.detention_destination_total / d.detention_destination_cnt) END as detention_destination_mean FROM
+(SELECT c.mode, c.segment, destination_location_key, SUM(c.detention_destination) as detention_destination_total, SUM(c.detention_destination_cnt) as detention_destination_cnt, 
+COUNT(c.detention_destination) as shipment_cnt FROM
+(SELECT a.mode, a.segment, a.destination_location_key, b.detention_destination, 
+CASE WHEN b.detention_destination = 0 THEN 0 ELSE 1 END as detention_destination_cnt FROM 
+(SELECT mode, segment, destination_location_key FROM prd_product_ctl.ibp_ask_hist_12 
+WHERE analysis_level IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book')
+GROUP BY mode, segment, destination_location_key) a
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_data_vw_mat
+WHERE departure_date > (SELECT date_add(now(), interval -3 months) as date_scope ) ) b
+ON b.transportation_mode = a.mode AND b.segment = a.segment AND b.destination_location_key = a.destination_location_key ) c
+GROUP BY  c.mode, c.segment, c.destination_location_key) d
+INNER JOIN prd_product_ctl.ibp_accessorial_thresholds f
+ON f.mode = d.mode) g 
+
+
+
+CREATE VIEW prd_product_ctl.ibp_ask_hist_12_2 AS
+SELECT f.region, f.business_group, f.mode, f.source_location_key, f.origination_location_id, f.reference_origination_id, f.source_location_city,
+f.source_location_region, f.source_location_postal_code, f.source_location_country, f.destination_location_key, f.destination_location_id, f.reference_destination_id,
+f.destination_location_city, f.destination_location_region, f.destination_location_postal_code, f.destination_location_country, f.product_id,
+f.profit_center, f.internal_external, f.segment, f.freight_book_code, f.analysis_level, f.n, f.currency_code, f.uom, f.uom_amt,
+f.linehaul_est, f.linehaul_spot_adj_est, f.fuel_est, CASE WHEN f.wash_spillover IS NOT NULL THEN f.wash_spillover ELSE f.wash_est END as wash_est,
+f.deadhead_est, f.admin_est, f.congestion_est, f.currency_est,
+CASE WHEN f.detention_destination_spillover IS NOT NULL THEN f.detention_destination_spillover ELSE f.detention_destination_est END as detention_destination_est,
+CASE WHEN f.detention_source_spillover IS NOT NULL THEN f.detention_source_spillover ELSE f.detention_source_est END as detention_source_est,
+f.discount_est, f.drayage_est, f.equipment_est, f.holiday_est, f.layover_est, f.other_est, f.pallet_est, f.tolls_est, f.unloading_est, 
+f.radar_est, f.tonu_est, f.switch_est, f.rider_est, f.stop_charges_est, f.storage_est
+FROM
+(SELECT a.*, b.wash_est as wash_spillover, c.detention_source_est as detention_source_spillover, d.detention_destination_est as detention_destination_spillover 
+FROM (SELECT * FROM prd_product_ctl.ibp_ask_hist_12 WHERE analysis_level IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book') ) a
+LEFT JOIN prd_product_ctl.ibp_spillover_accessorials_wash_vw b
+ON b.product_id = a.product_id AND b.transportation_mode = a.mode AND b.segment = a.segment
+LEFT JOIN prd_product_ctl.ibp_spillover_accessorials_detention_source_vw c
+ON c.source_location_key = a.source_location_key AND c.mode = a.mode AND c.segment = a.segment
+LEFT JOIN prd_product_ctl.ibp_spillover_accessorials_detention_destination_vw d
+ON d.destination_location_key = a.destination_location_key AND d.mode = a.mode AND d.segment = a.segment) f
+
+
+
+CREATE VIEW prd_product_ctl.ibp_ask_hist_12_3 AS
+SELECT * FROM prd_product_ctl.ibp_ask_hist_12 
+WHERE analysis_level NOT IN ('Mileage Scale', 'Rail Freight Book', 'Container Rate Book') 
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_ask_hist_12_2
+
+
+
+### UOM CONVERSIONS ###
 CREATE VIEW prd_product_ctl.ibp_ask_hist_13 AS
-SELECT * FROM prd_product_ctl.ibp_ask_hist_12
+SELECT * FROM prd_product_ctl.ibp_ask_hist_12_3
 UNION ALL
 SELECT c.region, c.business_group, c.mode, c.source_location_key, c.origination_location_id, c.reference_origination_id, c.source_location_city,
 c.source_location_region, c.source_location_postal_code, c.source_location_country, c.destination_location_key, c.destination_location_id,
@@ -2049,7 +2362,7 @@ c.product_id, c.profit_center, c.internal_external, c.segment, c.freight_book_co
 c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est, c.equipment_est, c.holiday_est, c.layover_est, c.other_est,
 c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est 
 FROM
-(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12 a
+(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3 a
 LEFT JOIN prd_product_ctl.ibp_uom_conversions b
 ON b.from_uom = a.uom
 WHERE a.uom = 'LB') c
@@ -2062,10 +2375,23 @@ c.product_id, c.profit_center, c.internal_external, c.segment, c.freight_book_co
 c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est, c.equipment_est, c.holiday_est, c.layover_est, c.other_est,
 c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est 
 FROM
-(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12 a
+(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3 a
 LEFT JOIN prd_product_ctl.ibp_uom_conversions b
 ON b.from_uom = a.uom
 WHERE a.uom = 'GAL') c
+
+
+
+### CONTAINER REGIONS ###
+CREATE VIEW prd_product_ctl.ibp_ask_hist_13_2 AS
+SELECT a.*, b.container_region as source_location_container_region, c.container_region as destination_location_container_region
+FROM prd_product_ctl.ibp_ask_hist_13_mat a
+LEFT JOIN prd_product_ctl.ibp_container_region_mapping b
+ON b.country_code = a.source_location_country
+LEFT JOIN prd_product_ctl.ibp_container_region_mapping c
+ON c.country_code = a.destination_location_country 
+WHERE a.mode = 'Container'
+
 
 
 ### APPLY ESCALATORS ###
@@ -2083,12 +2409,35 @@ f.rider_est, f.stop_charges_est, f.storage_est, f.proj_month FROM
 LEFT JOIN (SELECT UCASE(region) as region, UCASE(country) as country, 
 INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as linehaul_escalator
 FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'LINEHAUL') b
-ON b.region = a.region AND b.mode = a.mode AND b.segment = a.segment ) c
+ON b.region = a.region AND b.mode = a.mode AND b.segment = a.segment
+WHERE a.mode IN ('Truck', 'Rail') ) c
 LEFT JOIN 
 (SELECT UCASE(region) as region, UCASE(country) as country, 
 INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as fuel_escalator
 FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL') d
 ON d.region = c.region AND d.mode = c.mode AND d.segment = c.segment AND d.proj_month = c.proj_month) f
+UNION ALL
+SELECT f.region, f.business_group, f.mode, f.source_location_key, f.origination_location_id, f.reference_origination_id, f.source_location_city,
+f.source_location_region, f.source_location_postal_code, f.source_location_country, f.destination_location_key, f.destination_location_id,
+f.reference_destination_id, f.destination_location_city, f.destination_location_region, f.destination_location_postal_code, f.destination_location_country,
+f.product_id, f.profit_center, f.internal_external, f.segment, f.freight_book_code, f.analysis_level, f.n, f.currency_code, f.uom, f.uom_amt,
+(f.linehaul_est * f.linehaul_escalator) as linehaul_est, f.linehaul_spot_adj_est, (f.fuel_est * f.fuel_escalator) as fuel_est, f.wash_est,
+f.deadhead_est, f.admin_est, f.congestion_est, f.currency_est, f.detention_destination_est, f.detention_source_est, f.discount_est, f.drayage_est,
+f.equipment_est, f.holiday_est, f.layover_est, f.other_est, f.pallet_est, f.tolls_est, f.unloading_est, f.radar_est, f.tonu_est, f.switch_est,
+f.rider_est, f.stop_charges_est, f.storage_est, f.proj_month FROM
+(SELECT c.*, d.fuel_escalator FROM
+(SELECT a.*, b.proj_month, b.linehaul_escalator FROM prd_product_ctl.ibp_ask_hist_13_2 a
+LEFT JOIN (SELECT INITCAP(mode) as mode, UCASE(origin_region), UCASE(destination_region), proj_month, escalator as linehaul_escalator
+FROM prd_product_ctl.ibp_escalators_container_clean where UCASE(REPLACE(cost_type,' ', '')) = 'LINEHAUL') b
+ON b.origin_region = a.source_location_container_region AND b.destination_region = a.destination_location_container_region 
+AND b.mode = a.mode AND b.segment = a.segment
+WHERE a.mode = 'Container' ) c
+LEFT JOIN 
+(SELECT UCASE(region) as region, UCASE(country) as country, 
+INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as fuel_escalator
+FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL') d
+ON d.region = c.region AND d.mode = c.mode AND d.segment = c.segment AND d.proj_month = c.proj_month) f
+
 
 
 ### CONSOLIDATE RESULTS ###
@@ -2118,9 +2467,76 @@ source_location_postal_code, source_location_country, destination_location_id, r
 destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center, 
 internal_external, currency_code, uom, proj_month, analysis_level
 UNION ALL
+SELECT business_group, CASE WHEN mode IS NULL THEN 'Not Provided' ELSE mode END as mode, 
+CASE WHEN origination_location_id IS NULL THEN 'Not Provided' ELSE origination_location_id END as origination_location_id, 
+CASE WHEN reference_origination_id IS NULL THEN 'Not Provided' ELSE reference_origination_id END as reference_origination_id, 
+CASE WHEN origination_city IS NULL THEN 'N/A' ELSE origination_city END as origination_city,
+CASE WHEN origination_state IS NULL THEN 'N/A' ELSE origination_state END as origination_state,
+CASE WHEN origination_zip IS NULL THEN 'N/A' ELSE origination_zip END as origination_zip,
+CASE WHEN origination_country IS NULL THEN 'N/A' ELSE origination_country END as origination_country, 
+CASE WHEN destination_location_id IS NULL THEN 'Not Provided' ELSE destination_location_id END as destination_location_id, 
+CASE WHEN reference_destination_id IS NULL THEN 'Not Provided' ELSE reference_destination_id END as reference_destination_id, 
+CASE WHEN destination_city IS NULL THEN 'N/A' ELSE destination_city END as destination_city,
+CASE WHEN destination_state IS NULL THEN 'N/A' ELSE destination_state END as destination_state,
+CASE WHEN destination_zip IS NULL THEN 'N/A' ELSE destination_zip END as destination_zip,
+CASE WHEN destination_country IS NULL THEN 'N/A' ELSE destination_country END as destination_country, 
+CASE WHEN product_id IS NULL THEN 'Not Provided' ELSE product_id END as product_id, 
+CASE WHEN profit_center IS NULL THEN 'N/A' ELSE profit_center END as profit_center, 
+CASE WHEN internal_external IS NULL THEN 'N/A' ELSE internal_external END as internal_external, 
+now() as run_date, 'N/A' as currency, 'N/A' as uom, 1 as period, NOW() as period_date,
+error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 0 as linehaul_spot_adj_per_unit, 0 as fuel_per_unit,
+0 as wash_per_unit, 0 as deadhead_per_unit, 0 as admin_per_unit, 0 as congestion_per_unit, 0 as currency_per_unit, 
+0 as detention_destination_per_unit, 0 as detention_source_per_unit, 0 as discount_per_unit, 0 as drayage_per_unit, 0 as equipment_per_unit,
+0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
+0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
+FROM prd_product_ctl.ibp_error_log_ask
+UNION ALL
 SELECT business_group, mode, origination_location_id, reference_origination_id, origination_city, origination_state, origination_zip,
 origination_country, destination_location_id, reference_destination_id, destination_city, destination_state, destination_zip, destination_country,
-product_id, profit_center, internal_external, now() as run_date, NULL as currency, 
-FROM prd_product_ctl.ibp_error_log_ask
+product_id, profit_center, internal_external, now() as run_date, 'N/A' as currency, 'N/A' as uom, 1 as period, NOW() as period_date,
+error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 0 as linehaul_spot_adj_per_unit, 0 as fuel_per_unit,
+0 as wash_per_unit, 0 as deadhead_per_unit, 0 as admin_per_unit, 0 as congestion_per_unit, 0 as currency_per_unit, 
+0 as detention_destination_per_unit, 0 as detention_source_per_unit, 0 as discount_per_unit, 0 as drayage_per_unit, 0 as equipment_per_unit,
+0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
+0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
+FROM prd_product_ctl.ibp_error_log_rail_freight_book
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, origination_city, origination_state, origination_zip,
+origination_country, destination_location_id, reference_destination_id, destination_city, destination_state, destination_zip, destination_country,
+product_id, profit_center, internal_external, now() as run_date, 'N/A' as currency, 'N/A' as uom, 1 as period, NOW() as period_date,
+error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 0 as linehaul_spot_adj_per_unit, 0 as fuel_per_unit,
+0 as wash_per_unit, 0 as deadhead_per_unit, 0 as admin_per_unit, 0 as congestion_per_unit, 0 as currency_per_unit, 
+0 as detention_destination_per_unit, 0 as detention_source_per_unit, 0 as discount_per_unit, 0 as drayage_per_unit, 0 as equipment_per_unit,
+0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
+0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
+FROM prd_product_ctl.ibp_error_log_truck_mileage_scale
 
-SELECT * FROM prd_product_ctl.ibp_error_log_ask
+
+### FINAL COST REPORTING ###
+CREATE VIEW prd_product_ctl.ibp_costs_final_reporting AS
+SELECT a.*, b.calculation_method FROM 
+(SELECT CASE WHEN business_group IS NULL then 'Not Provided' ELSE business_group END as business_group, 
+CASE WHEN mode IS NULL then 'Not Provided' ELSE mode END as mode,
+CASE WHEN origination_location_id IS NULL THEN 'Not Provided' ELSE origination_location_id END as origination_location_id, 
+CASE WHEN reference_origination_id IS NULL THEN 'Not Provided' ELSE reference_origination_id END as reference_origination_id, 
+origination_city, origination_state, origination_zip, origination_country,
+CASE WHEN destination_location_id IS NULL THEN 'Not Provided' ELSE destination_location_id END as destination_location_id, 
+CASE WHEN reference_destination_id IS NULL THEN 'Not Provided' ELSE reference_destination_id END as reference_destination_id, 
+destination_city, destination_state, destination_zip, destination_country,
+CASE WHEN product_id IS NULL THEN 'Not Provided' ELSE product_id END as product_id, profit_center, internal_external
+FROM prd_product_ctl_ibp_ask.md_transportation_lane ) a
+LEFT JOIN
+(SELECT business_group, mode, origination_location_id, reference_origination_id, destination_location_id, reference_destination_id, product_id, 
+CASE WHEN calculation_method LIKE 'ERROR - No distance found for:%' THEN 'ERROR - No distance found' ELSE
+CASE WHEN calculation_method LIKE 'ERROR - No Match found for freight book:' THEN 'ERROR - No Match found for freight book' ELSE
+calculation_method END END as calculation_method
+FROM prd_product_ctl_ibp.ibp_costs_final_it
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, destination_location_id, reference_destination_id, product_id, calculation_method) b
+ON b.business_group = a.business_group AND UCASE(b.mode) = UCASE(a.mode) AND b.reference_origination_id = a.reference_origination_id
+AND b.origination_location_id = a.origination_location_id AND b.destination_location_id = a.destination_location_id
+AND b.reference_destination_id = a.reference_destination_id AND b.product_id = a.product_id
+
+
+ 
+
+
