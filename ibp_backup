@@ -1,6 +1,6 @@
 ################## IBP PRODUCT BELOW ##################
 
-DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 26
+DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 23
 
 ### ibp tablez ###
 SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_vw 
@@ -2073,6 +2073,43 @@ profit_center, internal_external, freight_book_code
 
 
 
+### ERROR LOGGING CONTAINER SPILLOVER ###
+CREATE VIEW prd_product_ctl.ibp_error_log_container_spillover AS
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city as origination_city, 
+source_location_region as origination_state, source_location_postal_code as origination_zip, source_location_country as origination_country,
+destination_location_id, reference_destination_id, destination_location_city as destination_city, destination_location_region as destination_state, 
+destination_location_postal_code as destination_zip, destination_location_country as destination_country, product_id,
+profit_center, internal_external, 
+CONCAT('ERROR - No Container Rate found for: ', source_location_city, ', ', source_location_country, ' - ', 
+destination_location_city, ', ', destination_location_country ) as 'error_desc' 
+FROM
+(SELECT UCASE(a.region) as region, a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
+a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
+a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, analysis_level, 1 as n, 'USD' as currency_code, 'N/A' as uom, 'N/A' as uom_amt,
+b.avg_total_price as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
+0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
+0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
+FROM 
+(SELECT a2.*, UCASE(a3.container_rate_book_country) as source_container_rate_book_country, 
+UCASE(a4.container_rate_book_country) as destination_container_rate_book_country 
+FROM 
+(SELECT *,
+CASE WHEN source_location_country IN ('USA', 'US') THEN CONCAT(source_location_city, ' ', source_location_region) ELSE source_location_city END as source_container_rate_book_city, 
+CASE WHEN destination_location_country IN ('USA', 'US') THEN CONCAT(destination_location_city, ' ', destination_location_region) ELSE destination_location_city END as destination_container_rate_book_city
+FROM prd_product_ctl.ibp_ask_hist_11) a2
+LEFT JOIN prd_product_ctl.ibp_country_mapping a3
+ON UCASE(a3.system_country_code) = UCASE(a2.source_location_country)
+LEFT JOIN prd_product_ctl.ibp_country_mapping a4
+ON UCASE(a4.system_country_code) = UCASE(a2.destination_location_country)
+WHERE analysis_level IS NULL AND mode = 'Container') a
+LEFT JOIN prd_product_ctl.ibp_container_rate_book_clean  b
+ON UCASE(b.origin_city) = UCASE(a.source_container_rate_book_city) AND UCASE(b.origin_country) = a.source_container_rate_book_country AND
+UCASE(b.destination_city) = UCASE(a.destination_container_rate_book_city) AND UCASE(b.destination_country) = a.destination_container_rate_book_country
+WHERE analysis_level IS NULL ) z
+
+
+
 ### Ask - Hist JOIN ###
 CREATE VIEW prd_product_ctl.ibp_ask_hist_1 AS
 SELECT b.region, a.*, b.analysis_level, b.n, b.currency_code, b.uom, b.uom_amt, b.linehaul_est, b.linehaul_spot_adj_est, b.fuel_est, 
@@ -2379,6 +2416,33 @@ UCASE(b.destination_city) = UCASE(a.destination_container_rate_book_city) AND UC
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat 
 WHERE transportation_mode = 'Container' AND analysis_level = '3 Month - Segment') c
 ON c.region = UCASE(a.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
+UNION ALL
+SELECT UCASE(a.region) as region, a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
+a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
+a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Container Rate Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.volume_mean as uom_amt,
+b.avg_total_price as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
+0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
+0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
+FROM 
+(SELECT a2.*, UCASE(a3.container_rate_book_country) as source_container_rate_book_country, 
+UCASE(a4.container_rate_book_country) as destination_container_rate_book_country 
+FROM 
+(SELECT *,
+CASE WHEN source_location_country IN ('USA', 'US') THEN CONCAT(source_location_city, ' ', source_location_region) ELSE source_location_city END as source_container_rate_book_city, 
+CASE WHEN destination_location_country IN ('USA', 'US') THEN CONCAT(destination_location_city, ' ', destination_location_region) ELSE destination_location_city END as destination_container_rate_book_city
+FROM prd_product_ctl.ibp_ask_hist_11) a2
+INNER JOIN prd_product_ctl.ibp_country_mapping a3
+ON UCASE(a3.system_country_code) = UCASE(a2.source_location_country)
+INNER JOIN prd_product_ctl.ibp_country_mapping a4
+ON UCASE(a4.system_country_code) = UCASE(a2.destination_location_country)
+WHERE analysis_level IS NULL AND mode = 'Container') a
+INNER JOIN prd_product_ctl.ibp_container_rate_book_clean  b
+ON UCASE(b.origin_city) = UCASE(a.source_container_rate_book_city) AND UCASE(b.origin_country) = a.source_container_rate_book_country AND
+UCASE(b.destination_city) = UCASE(a.destination_container_rate_book_city) AND UCASE(b.destination_country) = a.destination_container_rate_book_country
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat 
+WHERE transportation_mode = 'Container' AND analysis_level = '3 Month - Segment') c
+ON c.region = UCASE(a.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
 
 
 
@@ -2656,6 +2720,16 @@ error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 
 0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
 0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
 FROM prd_product_ctl.ibp_error_log_truck_mileage_scale
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, origination_city, origination_state, origination_zip,
+origination_country, destination_location_id, reference_destination_id, destination_city, destination_state, destination_zip, destination_country,
+product_id, profit_center, internal_external, now() as run_date, 'N/A' as currency, 'N/A' as uom, 1 as period, NOW() as period_date,
+error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 0 as linehaul_spot_adj_per_unit, 0 as fuel_per_unit,
+0 as wash_per_unit, 0 as deadhead_per_unit, 0 as admin_per_unit, 0 as congestion_per_unit, 0 as currency_per_unit, 
+0 as detention_destination_per_unit, 0 as detention_source_per_unit, 0 as discount_per_unit, 0 as drayage_per_unit, 0 as equipment_per_unit,
+0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
+0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
+FROM prd_product_ctl.ibp_error_log_container_spillover
 
 
 
@@ -2676,7 +2750,8 @@ LEFT JOIN
 (SELECT business_group, mode, origination_location_id, reference_origination_id, destination_location_id, reference_destination_id, product_id, 
 CASE WHEN calculation_method LIKE 'ERROR - No distance found for:%' THEN 'ERROR - No distance found' ELSE
 CASE WHEN calculation_method LIKE 'ERROR - No Match found for freight book:' THEN 'ERROR - No Match found for freight book' ELSE
-calculation_method END END as calculation_method
+CASE WHEN calculation_method LIKE 'ERROR - No Container Rate found for:%' THEN 'ERROR - No Container Rate found' ELSE
+calculation_method END END END as calculation_method
 FROM prd_product_ctl_ibp.ibp_costs_final_it
 GROUP BY business_group, mode, origination_location_id, reference_origination_id, destination_location_id, reference_destination_id, product_id, calculation_method) b
 ON b.business_group = a.business_group AND UCASE(b.mode) = UCASE(a.mode) AND b.reference_origination_id = a.reference_origination_id
