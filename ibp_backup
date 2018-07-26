@@ -1,5 +1,6 @@
 ################## IBP PRODUCT BELOW ##################
 
+DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 26
 
 ### ibp tablez ###
 SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_vw 
@@ -32,7 +33,7 @@ SELECT * FROM prd_product_ctl.ibp_product_global_vw_mat
 
 SELECT * FROM prd_product_ctl.ibp_location_vw_mat
 
-SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE transportation_mode IN ('TRUCK', 'Full Truck Load')
+SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE transportation_mode IN ('Container', 'MARINE')
 
 SELECT * FROM prd_product_ctl.ibp_historical_cost_estimates_vw_mat
 
@@ -52,8 +53,9 @@ SELECT * FROM prd_product_ctl.ibp_last_value_thresholds
 
 SELECT * FROM prd_product_ctl.ibp_product_freight_book_mapping
 
-SELECT * FROM prd_product_ctl.ibp_all_escalators_vw WHERE cost_type = 'line haul' ORDER BY segment, `month`
+SELECT * FROM prd_product_ctl.ibp_all_escalators_vw ORDER BY segment, cost_type, `month`
 SELECT * FROM prd_product_ctl.ibp_escalators_container_clean
+SELECT * FROM prd_product_ctl.ibp_container_escalators_vw ORDER BY origin_region, destination_region, cost_type, proj_month
 
 SELECT * FROM prd_product_ctl.ibp_spillover_accessorials_wash_vw 
 
@@ -327,9 +329,74 @@ SUM(k.currency) as currency, SUM(k.deadhead) as deadhead, SUM(k.detention_destin
 SUM(k.equipment) as equipment, SUM(k.fuel) as fuel, SUM(k.holiday) as holiday, SUM(k.layover) as layover, SUM(CASE WHEN k.spot_rate_indicator <> 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul, 
 SUM(CASE WHEN k.spot_rate_indicator = 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul_spot, SUM(k.other) as other, SUM(k.pallet) as pallet, SUM(k.preloading) as preloading,
 SUM(k.radar) as radar, SUM(k.rider) as rider, SUM(k.stop_charges) as stop_charges, SUM(k.storage) as storage, SUM(k.switch) as switch, SUM(k.tolls) as tolls, SUM(k.tonu) as tonu, SUM(k.unloading) as unloading, SUM(k.wash) as wash
-FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final k
+FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final_mat k
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'RSTP') j
 ON j.system_mode = k.mode
+WHERE k.uom IN ('LBS', 'GAL', 'MTN', 'KG')
+GROUP BY k.bol, k.ship_date, k.mode, j.ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, k.uom, k.currencytype) h
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) i
+ON i.transportation_mode = h.mode AND i.means_of_transport = h.equip )
+UNION ALL
+(SELECT 'SAP TM' as system, 'NA' as region, b.freight_order_number, CAST(from_unixtime(CAST(b.departure_date as bigint)) AS TIMESTAMP) departure_date, 
+b.ibp_mode as transportation_mode, b.means_of_transport, d.segment, b.source_location_key,
+b.source_location_city, b.source_location_region, b.source_location_postal_code, b.source_location_country, b.destination_location_key, b.destination_location_city, b.destination_location_region,
+b.destination_location_postal_code, b.destination_location_country, b.net_weight_user_selected_unit as net_weight, b.net_weight_user_selected_unit_unit as net_weight_unit, 
+CASE WHEN b.for_volume_unit IN ('GAL', 'GLL') THEN b.for_volume ELSE NULL END as volume, CASE WHEN b.for_volume_unit IN ('GAL', 'GLL') THEN 'GAL' ELSE NULL END as volume_unit,
+b.total_distance as distance, b.total_distance_unit as distance_unit, c.rated_amount_currency as currency_code, CAST(c.admin as float) as admin, CAST(c.congestion as float) as congestion, CAST(c.currency as float) as currency,
+CAST(c.deadhead as float) as deadhead, CAST(c.detention_destination as float) as detention_destination, CAST(c.detention_source as float) as detention_source, CAST(c.discount as float) as discount, CAST(c.drayage as float) as drayage, CAST(c.equipment as float) as equipment, 
+CAST(c.fuel as float) as fuel, CAST(c.holiday as float) as holiday, CAST(c.layover as float) as layover, CAST(c.linehaul as float) as linehaul, CAST(c.linehaul_spot as float) as linehaul_spot,
+CAST(c.other as float) as other, CAST(c.pallet as float) as pallet, CAST(c.preloading as float) as preloading, CAST(c.radar as float) as radar, CAST(c.rider as float) as rider, CAST(c.stop_charges as float) as stop_charges,
+CAST(c.storage as float) as storage, CAST(c.switch as float) as switch, CAST(c.tolls as float) as tolls, CAST(c.tonu as float) as tonu, CAST(c.unloading as float) as unloading, CAST(c.wash as float) as wash
+FROM 
+(SELECT f.*, f2.ibp_mode FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_shipment_detail_final f 
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'SAP TM') f2 
+ON f2.system_mode = f.transportation_mode AND f2.means_of_transport = f.means_of_transport)  b
+LEFT JOIN
+(SELECT a.freight_order_number, a.rated_amount_currency, SUM(CASE WHEN a.charge_group = 'Admin' THEN a.rated_amount ELSE 0 END) as admin,
+SUM(CASE WHEN a.charge_group = 'Congestion' THEN a.rated_amount ELSE 0 END) as congestion, SUM(CASE WHEN a.charge_group = 'Currency' THEN a.rated_amount ELSE 0 END) as currency,
+SUM(CASE WHEN a.charge_group = 'Deadhead' THEN a.rated_amount ELSE 0 END) as deadhead, SUM(CASE WHEN a.charge_group = 'Detention Destination' THEN a.rated_amount ELSE 0 END) as detention_destination, 
+SUM(CASE WHEN a.charge_group = 'Detention Source' THEN a.rated_amount ELSE 0 END) as detention_source, SUM(CASE WHEN a.charge_group = 'Discount' THEN a.rated_amount ELSE 0 END) as discount, SUM(CASE WHEN a.charge_group = 'Drayage' THEN a.rated_amount ELSE 0 END) as drayage, 
+SUM(CASE WHEN a.charge_group = 'Equipment' THEN a.rated_amount ELSE 0 END) as equipment, SUM(CASE WHEN a.charge_group = 'Fuel' THEN a.rated_amount ELSE 0 END) as fuel, SUM(CASE WHEN a.charge_group = 'Holiday' THEN a.rated_amount ELSE 0 END) as holiday,
+SUM(CASE WHEN a.charge_group = 'Layover' THEN a.rated_amount ELSE 0 END) as layover, SUM(CASE WHEN a.charge_group = 'Linehaul' THEN a.rated_amount ELSE 0 END) as linehaul,
+SUM(CASE WHEN a.charge_group = 'Linehaul_spot' THEN a.rated_amount ELSE 0 END) as linehaul_spot, SUM(CASE WHEN a.charge_group = 'Other' THEN a.rated_amount ELSE 0 END) as other,
+SUM(CASE WHEN a.charge_group = 'Pallet' THEN a.rated_amount ELSE 0 END) as pallet, SUM(CASE WHEN a.charge_group = 'Preloading' THEN a.rated_amount ELSE 0 END) as preloading,
+SUM(CASE WHEN a.charge_group = 'RADAR' THEN a.rated_amount ELSE 0 END) as radar, SUM(CASE WHEN a.charge_group = 'Rider' THEN a.rated_amount ELSE 0 END) as rider,
+SUM(CASE WHEN a.charge_group = 'Stop Charges' THEN a.rated_amount ELSE 0 END) as stop_charges, SUM(CASE WHEN a.charge_group = 'Storage' THEN a.rated_amount ELSE 0 END) as storage,
+SUM(CASE WHEN a.charge_group = 'Switch' THEN a.rated_amount ELSE 0 END) as switch, SUM(CASE WHEN a.charge_group = 'Tolls' THEN a.rated_amount ELSE 0 END) as tolls,
+SUM(CASE WHEN a.charge_group = 'TONU' THEN a.rated_amount ELSE 0 END) as tonu, SUM(CASE WHEN a.charge_group = 'Unloading' THEN a.rated_amount ELSE 0 END) as unloading,
+SUM(CASE WHEN a.charge_group = 'Wash' THEN a.rated_amount ELSE 0 END) as wash
+FROM
+(SELECT a2.freight_order_number, a2.rated_amount_currency, a3.charge_group, a2.rated_amount 
+FROM dev_internal_ctl_truck.nata_sap_tm_ofsa_charge_detail_final a2
+LEFT JOIN (SELECT * FROM prd_product_ctl.ibp_charge_groups WHERE system = 'SAP TM') a3
+ON a3.charge_code = a2.rated_charge_type_key) a
+GROUP BY a.freight_order_number, a.rated_amount_currency) c
+ON c.freight_order_number = b.freight_order_number
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
+ON d.transportation_mode = b.transportation_mode AND d.means_of_transport = b.means_of_transport ) 
+UNION ALL
+(SELECT 'RSTP' as system, 'NA' as region, h.bol, CAST(from_unixtime(CAST(h.ship_date/1000 as bigint)) AS TIMESTAMP) departure_date, 
+h.ibp_mode as transportation_mode, h.equip, i.segment,
+h.originid, h.ocity, h.ostate, h.ozip, h.ocountry, CAST(h.dloc as string) as dloc, h.dcity, h.dstate, h.dzip, h.dcountry, 
+CAST(CASE WHEN h.uom = 'MTN' THEN (h.ship_qty * 2204.62) ELSE CASE WHEN h.uom = 'KG' THEN (h.ship_qty * 2.20462) ELSE CASE WHEN h.uom = 'LBS' THEN h.ship_qty ELSE NULL END END END as float) as net_weight_user_selected, 
+CASE WHEN h.uom IN ('LBS', 'MTN', 'KG') THEN 'LB' ELSE NULL END as net_weight_uom, 
+CAST(CASE WHEN h.uom = 'GAL' THEN h.ship_qty ELSE NULL END as float) as for_volume_user_selected, 
+CASE WHEN h.uom IN ('GAL') THEN h.uom ELSE NULL END as for_volume_uom,
+CAST(h.distance as float) as distance, 'MI' as distance_unit, h.currencytype, CAST(h.admin as float) as admin, 
+CAST(h.congestion as float) as congestion, CAST(h.currency as float) as currency, CAST(h.deadhead as float) as deadhead, CAST(h.detention_destination as float) as detention_destination,
+CAST(h.detention_source as float) as detention_source, CAST(h.discount as float) as discount, CAST(h.drayage as float) as drayage, CAST(h.equipment as float) as equipment, CAST(h.fuel as float) as fuel, CAST(h.holiday as float) as holiday,
+CAST(h.layover as float) as layover, CAST(h.linehaul as float) as linehaul, CAST(h.linehaul_spot as float) as linehaul_spot, CAST(h.other as float) as other, CAST(h.pallet as float) as pallet, CAST(h.preloading as float) as preloading,
+CAST(h.radar as float) as radar, CAST(h.rider as float) as rider, CAST(h.stop_charges as float) as stop_charges, CAST(h.storage as float) as storage, CAST(h.switch as float) as switch,
+CAST(h.tolls as float) as tolls, CAST(h.tonu as float) as tonu, CAST(h.unloading as float) as unloading, CAST(h.wash as float) as wash
+FROM 
+(SELECT k.bol, k.ship_date, k.mode, j.ibp_mode as ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, SUM(k.ship_qty) as ship_qty, k.uom, SUM(k.distance) as distance, k.currencytype, SUM(k.admin) as admin, SUM(k.congestion) as congestion,
+SUM(k.currency) as currency, SUM(k.deadhead) as deadhead, SUM(k.detention_destination) as detention_destination, SUM(k.detention_origin) as detention_source, SUM(k.discount) as discount, SUM(k.drayage) as drayage,
+SUM(k.equipment) as equipment, SUM(k.fuel) as fuel, SUM(k.holiday) as holiday, SUM(k.layover) as layover, SUM(CASE WHEN k.spot_rate_indicator <> 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul, 
+SUM(CASE WHEN k.spot_rate_indicator = 'Spot Rated' THEN linehaul ELSE 0 END) as linehaul_spot, SUM(k.other) as other, SUM(k.pallet) as pallet, SUM(k.preloading) as preloading,
+SUM(k.radar) as radar, SUM(k.rider) as rider, SUM(k.stop_charges) as stop_charges, SUM(k.storage) as storage, SUM(k.switch) as switch, SUM(k.tolls) as tolls, SUM(k.tonu) as tonu, SUM(k.unloading) as unloading, SUM(k.wash) as wash
+FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final_mat k
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'RSTP') j
+ON j.system_mode = k.mode AND j.means_of_transport = k.equip
 WHERE k.uom IN ('LBS', 'GAL', 'MTN', 'KG')
 GROUP BY k.bol, k.ship_date, k.mode, j.ibp_mode, k.equip, k.originid, k.ocity, k.ostate, k.ozip, k.ocountry, k.dloc, k.dcity, k.dstate, k.dzip, k.dcountry, k.uom, k.currencytype) h
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) i
@@ -402,6 +469,31 @@ ON d.system_mode = c.mode_desc
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '') f
 ON f.transportation_mode = c.mode_desc AND f.means_of_transport = c.equipment_type_cd) g
 GROUP BY g.ibp_mode, g.segment, g.product_no, g.stcc)
+UNION ALL
+(SELECT 'SAP TM' as system, 'NA' as region,
+c.ibp_mode as transportation_mode, d.segment, c.material_key as product_no, g.stcc, count(*) as shipment_count
+FROM 
+(SELECT f.*, f2.ibp_mode FROM dev_internal_ctl_truck.nata_sap_tm_material_allocation_route_detail_final f 
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'SAP TM') f2 
+ON f2.system_mode = f.transportation_mode AND f2.means_of_transport = f.means_of_transport ) c
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
+ON d.transportation_mode = c.transportation_mode AND d.means_of_transport = c.means_of_transport
+LEFT OUTER JOIN (SELECT product_code, stcc FROM  dev_internal_ctl_truck.nata_sap_tm_foida_final WHERE stcc <> '' GROUP BY product_code, stcc) g
+ON g.product_code = c.material_key
+GROUP BY c.ibp_mode, d.segment, c.material_key, g.stcc)
+UNION ALL
+(SELECT 'RSTP' as system, 'NA' as region, g.ibp_mode, g.segment, g.product_no,  replace(g.stcc, '-', '') as stcc, count(*) as shipment_count FROM
+(SELECT c.*, d.ibp_mode, f.segment FROM
+(SELECT a.product_no, b.mode_desc, b.equipment_type_cd, b.stcc
+FROM dev_internal_ctl_truck.ctl_shipment_fact a
+INNER JOIN dev_internal_ctl_truck.vw_star_tp b
+ON b.master_bol_no = a.master_bol_no ) c
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'RSTP') d
+ON d.system_mode = c.mode_desc AND d.means_of_transport = c.equipment_type_cd
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '') f
+ON f.transportation_mode = c.mode_desc AND f.means_of_transport = c.equipment_type_cd) g
+GROUP BY g.ibp_mode, g.segment, g.product_no, g.stcc)
+
 
 
 ### PRODUCT SCRIPT LOCATION ###
@@ -426,6 +518,30 @@ INNER JOIN dev_internal_ctl_truck.vw_star_tp b
 ON b.master_bol_no = a.master_bol_no ) c
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'RSTP') d
 ON d.system_mode = c.mode_desc
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '') f
+ON f.transportation_mode = c.mode_desc AND f.means_of_transport = c.equipment_type_cd) g
+GROUP BY g.ibp_mode, g.origin_id, g.dest_location_key, g.segment, g.product_no, g.stcc)
+UNION ALL
+(SELECT 'SAP TM' as system, 'NA' as region, c.source_location_key, c.allocated_destination_location_key,
+c.ibp_mode as transportation_mode, d.segment, c.material_key as product_no, g.stcc
+FROM 
+(SELECT f.*, f2.ibp_mode FROM dev_internal_ctl_truck.nata_sap_tm_material_allocation_route_detail_final f 
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'SAP TM') f2 
+ON f2.system_mode = f.transportation_mode AND f2.means_of_transport = f.means_of_transport ) c
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) d
+ON d.transportation_mode = c.transportation_mode AND d.means_of_transport = c.means_of_transport
+LEFT OUTER JOIN (SELECT product_code, stcc FROM  dev_internal_ctl_truck.nata_sap_tm_foida_final WHERE stcc <> '' GROUP BY product_code, stcc) g
+ON g.product_code = c.material_key
+GROUP BY c.ibp_mode, c.source_location_key, c.allocated_destination_location_key, d.segment, c.material_key, g.stcc)
+UNION ALL
+(SELECT 'RSTP' as system, 'NA' as region, g.origin_id, g.dest_location_key, g.ibp_mode, g.segment, g.product_no,  replace(g.stcc, '-', '') as stcc FROM
+(SELECT c.*, d.ibp_mode, f.segment FROM
+(SELECT a.product_no, b.origin_id, CAST(b.dest_location_key as STRING) as dest_location_key, b.mode_desc, b.equipment_type_cd, b.stcc
+FROM dev_internal_ctl_truck.ctl_shipment_fact a
+INNER JOIN dev_internal_ctl_truck.vw_star_tp b
+ON b.master_bol_no = a.master_bol_no ) c
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping_container_supplement WHERE system = 'RSTP') d
+ON d.system_mode = c.mode_desc AND d.means_of_transport = c.equipment_type_cd
 INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '') f
 ON f.transportation_mode = c.mode_desc AND f.means_of_transport = c.equipment_type_cd) g
 GROUP BY g.ibp_mode, g.origin_id, g.dest_location_key, g.segment, g.product_no, g.stcc)
@@ -1742,14 +1858,26 @@ SELECT * FROM prd_product_ctl.ibp_volume_averages_12_months_vw
 CREATE VIEW prd_product_ctl.ibp_fuel_escalator_vw AS 
 SELECT 'na' region, 'usa' country, f.mode, f.segment, 'fuel' cost, c.month_id, (c.close_px / c.close_px_base) escalator 
 FROM 
-(SELECT mode, segment, 'HO' symbol_primary_join 
-FROM 
+(SELECT mode_final as mode, segment_final as segment, 'HO' symbol_primary_join 
+FROM
+(SELECT d.*, z.*, 
+CASE WHEN mode IS NULL THEN mode_container_supplement ELSE mode END as mode_final,
+CASE WHEN segment IS NULL THEN segment_container_supplement ELSE segment END as segment_final FROM
 (SELECT d3.ibp_mode as mode, d2.segment 
 FROM prd_product_ctl.ibp_segment_mapping_vw d2
 INNER JOIN prd_product_ctl.ibp_mode_mapping d3
 ON d3.system_mode = d2.transportation_mode
-WHERE d2.active = 'Y' AND d2.segment <> '') d 
-GROUP BY mode, segment) f 
+WHERE d2.active = 'Y' AND d2.segment <> ''
+GROUP BY d3.ibp_mode, d2.segment) d 
+FULL OUTER JOIN
+(SELECT z3.ibp_mode as mode_container_supplement, z2.segment as segment_container_supplement 
+FROM prd_product_ctl.ibp_segment_mapping_vw z2
+INNER JOIN prd_product_ctl.ibp_mode_mapping_container_supplement z3
+ON z3.system_mode = z2.transportation_mode and z3.means_of_transport = z2.means_of_transport
+WHERE z2.active = 'Y' AND z2.segment <> ''
+GROUP BY z3.ibp_mode, z2.segment) z 
+ON z.mode_container_supplement = d.mode AND z.segment_container_supplement = d.segment) z2
+GROUP BY mode_final, segment_final) f 
 LEFT OUTER JOIN 
 (SELECT a.symbol_primary, a.symbol_type, b.symbol_type symbol_type_base, a.full_symbol_code, b.full_symbol_code full_symbol_code_base, a.month_id, 
 a.close_px, b.close_px close_px_base 
@@ -1766,8 +1894,8 @@ WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUTCA' AND
 AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
 AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
 AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope))) b 
-ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primary = f.symbol_primary_join 
-ORDER BY c.month_id ASC, mode ASC, segment ASC
+ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primary = f.symbol_primary_join
+
 
 
 
@@ -1812,6 +1940,21 @@ SELECT region, country, mode, segment, cost_type, month_group as `month`, escala
 FROM prd_product_ctl.ibp_rail_escalators_vw
 UNION ALL 
 SELECT * FROM prd_product_ctl.ibp_fuel_escalator_vw
+
+
+
+### CONTAINER LINEHAUL ESCALATORS ###
+CREATE VIEW prd_product_ctl.ibp_container_escalators_vw AS
+SELECT lcase(c.mode) as mode, ucase(c.origin_region) as origin_region, ucase(c.destination_region) as destination_region,
+lcase(c.cost_type) as cost_type, c.month_group as proj_month, EXP(SUM(LN(c.escalator_2))) as escalator_against_base FROM
+(SELECT a.mode, a.origin_region, a.destination_region, a.cost_type, a.proj_month as month_group, (1 + ROUND(a.escalator,4)) as escalator, b.proj_month as month_id, (1 + ROUND(b.escalator,4)) as escalator_2 
+FROM prd_product_ctl.ibp_escalators_container_clean a
+LEFT JOIN prd_product_ctl.ibp_escalators_container_clean b
+ON b.origin_region = a.origin_region AND b.destination_region = a.destination_region AND b.mode = a.mode AND b.cost_type = a.cost_type
+AND b.proj_month <= a.proj_month
+WHERE a.proj_month <= 36
+AND UCASE(a.mode) = 'CONTAINER') c
+GROUP BY mode, origin_region, destination_region, cost_type, month_group
 
 
 
@@ -2390,7 +2533,8 @@ LEFT JOIN prd_product_ctl.ibp_container_region_mapping b
 ON b.country_code = a.source_location_country
 LEFT JOIN prd_product_ctl.ibp_container_region_mapping c
 ON c.country_code = a.destination_location_country 
-WHERE a.mode = 'Container'
+WHERE INITCAP(a.mode) = 'Container'
+
 
 
 
@@ -2405,17 +2549,17 @@ f.deadhead_est, f.admin_est, f.congestion_est, f.currency_est, f.detention_desti
 f.equipment_est, f.holiday_est, f.layover_est, f.other_est, f.pallet_est, f.tolls_est, f.unloading_est, f.radar_est, f.tonu_est, f.switch_est,
 f.rider_est, f.stop_charges_est, f.storage_est, f.proj_month FROM
 (SELECT c.*, d.fuel_escalator FROM
-(SELECT a.*, b.proj_month, b.linehaul_escalator FROM prd_product_ctl.ibp_ask_hist_13 a
+(SELECT a.*, b.proj_month, b.linehaul_escalator FROM prd_product_ctl.ibp_ask_hist_13_mat a
 LEFT JOIN (SELECT UCASE(region) as region, UCASE(country) as country, 
 INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as linehaul_escalator
 FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'LINEHAUL') b
-ON b.region = a.region AND b.mode = a.mode AND b.segment = a.segment
-WHERE a.mode IN ('Truck', 'Rail') ) c
+ON b.region = UCASE(a.region) AND b.mode = INITCAP(a.mode) AND UCASE(b.segment) = UCASE(a.segment)
+WHERE INITCAP(a.mode) IN ('Truck', 'Rail') ) c
 LEFT JOIN 
 (SELECT UCASE(region) as region, UCASE(country) as country, 
 INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as fuel_escalator
 FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL') d
-ON d.region = c.region AND d.mode = c.mode AND d.segment = c.segment AND d.proj_month = c.proj_month) f
+ON d.region = UCASE(c.region) AND d.mode = INITCAP(c.mode) AND UCASE(d.segment) = UCASE(c.segment) AND d.proj_month = c.proj_month) f
 UNION ALL
 SELECT f.region, f.business_group, f.mode, f.source_location_key, f.origination_location_id, f.reference_origination_id, f.source_location_city,
 f.source_location_region, f.source_location_postal_code, f.source_location_country, f.destination_location_key, f.destination_location_id,
@@ -2427,16 +2571,18 @@ f.equipment_est, f.holiday_est, f.layover_est, f.other_est, f.pallet_est, f.toll
 f.rider_est, f.stop_charges_est, f.storage_est, f.proj_month FROM
 (SELECT c.*, d.fuel_escalator FROM
 (SELECT a.*, b.proj_month, b.linehaul_escalator FROM prd_product_ctl.ibp_ask_hist_13_2 a
-LEFT JOIN (SELECT INITCAP(mode) as mode, UCASE(origin_region), UCASE(destination_region), proj_month, escalator as linehaul_escalator
-FROM prd_product_ctl.ibp_escalators_container_clean where UCASE(REPLACE(cost_type,' ', '')) = 'LINEHAUL') b
-ON b.origin_region = a.source_location_container_region AND b.destination_region = a.destination_location_container_region 
-AND b.mode = a.mode AND b.segment = a.segment
-WHERE a.mode = 'Container' ) c
+LEFT JOIN (SELECT INITCAP(mode) as mode, UCASE(origin_region) as origin_region, UCASE(destination_region) as destination_region, 
+proj_month, escalator_against_base as linehaul_escalator
+FROM prd_product_ctl.ibp_container_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'LINEHAUL') b
+ON b.origin_region = UCASE(a.source_location_container_region) AND b.destination_region = UCASE(a. destination_location_container_region)
+AND b.mode = INITCAP(a.mode) ) c
 LEFT JOIN 
-(SELECT UCASE(region) as region, UCASE(country) as country, 
-INITCAP(mode) as mode, segment, `month` as 'proj_month', escalator as fuel_escalator
-FROM prd_product_ctl.ibp_all_escalators_vw where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL') d
-ON d.region = c.region AND d.mode = c.mode AND d.segment = c.segment AND d.proj_month = c.proj_month) f
+(SELECT INITCAP(mode) as mode, `month` as 'proj_month', AVG(escalator) as fuel_escalator
+FROM prd_product_ctl.ibp_all_escalators_vw 
+where UCASE(REPLACE(cost_type,' ', '')) = 'FUEL'
+AND INITCAP(mode) = 'Container'
+GROUP BY mode, `month`) d
+ON d.mode = c.mode AND d.proj_month = c.proj_month) f
 
 
 
@@ -2510,6 +2656,7 @@ error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 
 0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
 0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
 FROM prd_product_ctl.ibp_error_log_truck_mileage_scale
+
 
 
 ### FINAL COST REPORTING ###
