@@ -101,6 +101,8 @@ COMPUTE STATS prd_product_ctl_ibp.ibp_costs_final_it
 INSERT INTO prd_product_ctl.ibp_costs_final_archive SELECT * FROM prd_product_ctl.ibp_costs_final_vw
 COMPUTE STATS prd_product_ctl.ibp_costs_final_archive
 
+INSERT INTO prd_product_ctl.ibp_costs_backtesting_final_archive SELECT business_group, mode, segment, CAST(period as int) as period, freight_order_number,
+uom, currency, NOW() as run_date, forecasted_cost, actual_cost FROM prd_product_ctl.ibp_costs_backtesting_final
 
 
 ### ASK FINAL 1 ###
@@ -1883,15 +1885,15 @@ FROM
 (SELECT *, row_number() OVER (ORDER BY full_symbol_code ASC) month_id 
 FROM prd_internal_pconn.quotes_raw 
 WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUT' AND period_code = 'EOD' AND symbol_primary = 'HO' 
-AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
-AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
-AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope))) a 
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope))) a 
 LEFT OUTER JOIN 
 (SELECT * FROM prd_internal_pconn.quotes_raw 
 WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUTCA' AND period_code = 'EOD' AND symbol_primary = 'HO'
-AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
-AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
-AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope))) b 
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE CASE WHEN DAYOFWEEK(now()) = 1 THEN 2 ELSE 1 END END days) date_scope))) b 
 ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primary = f.symbol_primary_join
 
 
@@ -2794,3 +2796,105 @@ GROUP BY region, ibp_mode, segment
 
 ####################### BACK TESTING ##########################################
 
+### Prepare Forecasted Values ### 
+CREATE VIEW prd_product_ctl.ibp_costs_backtesting AS
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 1 
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -1 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -1 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -1 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 2
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -2 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -2 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -2 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 3
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -3 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -3 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -3 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 4
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -4 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -4 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -4 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 5
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -5 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -5 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -5 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 6
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -6 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -6 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -6 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 12
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -12 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -12 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -12 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 18
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -18 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -18 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -18 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 24
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -24 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -24 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -24 months) as date_scope))
+UNION ALL
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE period = 36
+AND YEAR(run_date) = YEAR((SELECT date_add(now(), interval -36 months) as date_scope))
+AND MONTH(run_date) = MONTH((SELECT date_add(now(), interval -36 months) as date_scope))
+AND DAY(run_date) = DAY((SELECT date_add(now(), interval -36 months) as date_scope))
+
+
+### Add Segment, Source Key, Dest Key ###
+CREATE VIEW prd_product_ctl.ibp_costs_backtesting_2 AS
+SELECT a.business_group, a.mode, b.segment, b.source_location_key, b.destination_location_key, a.uom, a.currency, 
+a.period, a.run_date, a.total_cost_per_unit as forecasted_cost  FROM prd_product_ctl.ibp_costs_backtesting a
+INNER JOIN 
+(SELECT business_group, mode, source_location_key, origination_location_id, reference_origination_id, 
+destination_location_key, destination_location_id, reference_destination_id, product_id, segment
+FROM prd_product_ctl.ibp_ask_hist_13_mat
+GROUP BY business_group, mode, source_location_key, origination_location_id, reference_origination_id, 
+destination_location_key, destination_location_id, reference_destination_id, product_id, segment) b 
+ON b.business_group = a.business_group AND b.mode = a.mode AND b.origination_location_id = a.origination_location_id 
+AND b.reference_origination_id = a.reference_origination_id AND b.destination_location_id = a.destination_location_id 
+AND b.reference_destination_id = a.reference_destination_id AND b.product_id = a.product_id
+
+
+### JOIN ACTUALS ###
+CREATE VIEW prd_product_ctl.ibp_costs_backtesting_final AS
+SELECT b.business_group, b.mode, b.segment, b.period, a.freight_order_number, b.uom, b.currency, b.forecasted_cost, a.actual_cost FROM 
+(SELECT transportation_mode, segment, freight_order_number, source_location_key, destination_location_key, uom, currency_code, (actual_cost / uom_amt) actual_cost FROM
+(SELECT transportation_mode, segment, freight_order_number, source_location_key, destination_location_key, CASE WHEN net_weight IS NULL then volume ELSE net_weight END AS uom_amt,
+CASE WHEN volume_unit is NULL THEN net_weight_unit ELSE volume_unit END as uom, currency_code, 
+(admin + congestion + currency + deadhead + detention_destination + detention_source + discount + drayage + equipment + fuel + holiday
++ layover + linehaul + linehaul_spot + other + pallet + preloading + radar + rider + stop_charges + storage + switch + tolls + tonu + unloading + wash) as actual_cost
+FROM prd_product_ctl.ibp_historical_data_vw_mat 
+WHERE departure_date > (SELECT date_add(now(), interval -2 weeks) as date_scope) ) a2 ) a
+INNER JOIN 
+(SELECT business_group, mode, segment, source_location_key, destination_location_key, uom, currency, period, run_date, forecasted_cost
+FROM prd_product_ctl.ibp_costs_backtesting_2
+GROUP BY business_group, mode, segment, source_location_key, destination_location_key, uom, currency, period, run_date, forecasted_cost) b
+ON b.mode = a.transportation_mode AND b.segment = a.segment AND b.source_location_key = a.source_location_key
+AND b.destination_location_key = a.destination_location_key AND b.uom = a.uom AND b.currency = a.currency_code
+
+CREATE TABLE prd_product_ctl.ibp_costs_backtesting_final_archive 
+(business_group string compression LZ4, mode string compression LZ4, segment string compression LZ4, period int, freight_order_number string compression LZ4, 
+uom string compression LZ4, currency string compression LZ4, run_date timestamp, forecasted_cost double, actual_cost double,
+PRIMARY KEY (business_group, mode, segment, period, freight_order_number, uom, currency) )
+PARTITION BY HASH (business_group, mode, segment)
+PARTITIONS 2
+STORED AS KUDU
