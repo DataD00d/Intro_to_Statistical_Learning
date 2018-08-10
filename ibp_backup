@@ -1,6 +1,6 @@
 ################## IBP PRODUCT BELOW ##################
 
-DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 23
+--DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 6 AND month(run_date) = 8
 
 ### ibp tablez ###
 SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_vw 
@@ -53,7 +53,7 @@ SELECT * FROM prd_product_ctl.ibp_last_value_thresholds
 
 SELECT * FROM prd_product_ctl.ibp_product_freight_book_mapping
 
-SELECT * FROM prd_product_ctl.ibp_all_escalators_vw ORDER BY segment, cost_type, `month`
+SELECT * FROM prd_product_ctl.ibp_all_escalators_vw WHERE segment = 'Specialty Bulk' ORDER BY segment, cost_type, `month`
 SELECT * FROM prd_product_ctl.ibp_escalators_container_clean
 SELECT * FROM prd_product_ctl.ibp_container_escalators_vw ORDER BY origin_region, destination_region, cost_type, proj_month
 
@@ -1763,16 +1763,14 @@ GROUP BY region, transportation_mode, segment, distance_unit, distance_band
 
 ### RAIL FREGHT BOOK ###
 CREATE VIEW prd_product_ctl.ibp_rail_freight_book_vw AS
-SELECT bu, origin_city, origin_state, destination_city, destination_state, (rate_total / rate_count) as rate
+SELECT region, commodity, origin_city, origin_state, destination_city, destination_state, AVG(rate) as rate
 FROM
-(SELECT bu, origin_city, origin_state, destination_city, destination_state, count(*) as rate_count, SUM(rate) as rate_total
-FROM
-(SELECT bu, origin_city, origin_state, destination_city, destination_state,
-CASE WHEN month(now()) = 4 THEN apr ELSE CASE WHEN month(now()) IN (5,6) then mj ELSE CASE WHEN month(now()) IN (7,8,9) then jas
-ELSE CASE WHEN month(now()) in (10,11,12) then ond ELSE CASE WHEN month(now()) IN (1,2,3) THEN jfm ELSE NULL END END END END END as rate
+(SELECT region, commodity, origin_city, origin_state, destination_city, destination_state,
+CASE WHEN month(now()) = 7 THEN jul ELSE CASE WHEN month(now()) IN (8,9) then a_s ELSE CASE WHEN month(now()) IN (10,11,12) then o_n_d
+ELSE CASE WHEN month(now()) in (1,2,3) then j_f_m ELSE CASE WHEN month(now()) IN (4,5,6) THEN a_m_j ELSE NULL END END END END END as rate
 FROM dev_internal_ctl_rail.rail_freight_book_final
-WHERE rate_year = (SELECT year(now()) + CASE WHEN month(now()) IN (1,2,3) THEN 1 ELSE 0 END) AND car_size = 'SM') a
-GROUP BY  bu, origin_city, origin_state, destination_city, destination_state) b
+WHERE rate_year = (SELECT year(now()) - CASE WHEN month(now()) IN (1,2,3,4,5,6) THEN 1 ELSE 0 END) AND UCASE(include_plan) = 'YES' ) a
+GROUP BY  region, commodity, origin_city, origin_state, destination_city, destination_state
 
 
 
@@ -1885,15 +1883,15 @@ FROM
 (SELECT *, row_number() OVER (ORDER BY full_symbol_code ASC) month_id 
 FROM prd_internal_pconn.quotes_raw 
 WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUT' AND period_code = 'EOD' AND symbol_primary = 'HO' 
-AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
-AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
-AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope))) a 
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope))) a 
 LEFT OUTER JOIN 
 (SELECT * FROM prd_internal_pconn.quotes_raw 
 WHERE source_code = 'CRB' AND market_code = 'NYME' AND symbol_type = 'FUTCA' AND period_code = 'EOD' AND symbol_primary = 'HO'
-AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
-AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope)) 
-AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL -1 days) date_scope))) b 
+AND year(quote_date_time) = year((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
+AND month(quote_date_time) = month((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope)) 
+AND day(quote_date_time) = day((SELECT DATE_ADD(now(), INTERVAL - CASE WHEN DAYOFWEEK(now()) = 2 THEN 3 ELSE 1 END days) date_scope))) b 
 ON b.symbol_primary = a.symbol_primary WHERE month_id < 37) c ON c.symbol_primary = f.symbol_primary_join
 
 
@@ -2361,7 +2359,7 @@ UNION ALL
 SELECT UCASE(b.region) as region, a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
 a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
 a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
-a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Rail Freight Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.net_weight_mean as uom_amt,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Rail Freight Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.net_weight_mean_single_car as uom_amt,
 b.rate as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
 0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
 0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
@@ -2369,7 +2367,8 @@ FROM prd_product_ctl.ibp_ask_hist_11 a
 LEFT OUTER JOIN prd_product_ctl.ibp_rail_freight_book_vw b
 on b.commodity = a.freight_book_code AND b.origin_city = a.source_location_city AND b.origin_state = a.source_location_region
 AND b.destination_city = a.destination_location_city AND b.destination_state = a.destination_location_region
-INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat 
+INNER JOIN (SELECT c1.*, c2.avg_car_count, c1.net_weight_mean / c2.avg_car_count as net_weight_mean_single_car FROM prd_product_ctl.ibp_historical_weight_estimates_vw_mat c1
+INNER JOIN prd_product_ctl.ibp_rail_car_counts_vw_final c2 ON c2.region = c1.region AND c2.segment = c1.segment
 WHERE transportation_mode = 'Rail' AND analysis_level = '3 Month - Segment') c
 ON c.region = UCASE(b.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
 WHERE a.analysis_level IS NULL AND a.mode = 'Rail' AND a.freight_book_code IS NOT NULL
@@ -2377,7 +2376,7 @@ UNION ALL
 SELECT UCASE(b.region) as region, a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
 a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
 a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
-a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Rail Freight Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.volume_mean as uom_amt,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Rail Freight Book' as analysis_level, 1 as n, 'USD' as currency_code, c.uom, c.volume_mean_single_car as uom_amt,
 b.rate as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
 0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
 0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
@@ -2385,7 +2384,8 @@ FROM prd_product_ctl.ibp_ask_hist_11 a
 INNER JOIN prd_product_ctl.ibp_rail_freight_book_vw b
 on b.commodity = a.freight_book_code AND b.origin_city = a.source_location_city AND b.origin_state = a.source_location_region
 AND b.destination_city = a.destination_location_city AND b.destination_state = a.destination_location_region
-INNER JOIN (SELECT * FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat 
+INNER JOIN (SELECT c1.*, c2.avg_car_count, c1.volume_mean / c2.avg_car_count as volume_mean_single_car FROM prd_product_ctl.ibp_historical_volume_estimates_vw_mat c1
+INNER JOIN prd_product_ctl.ibp_rail_car_counts_vw_final c2 ON c2.region = c1.region AND c2.segment = c1.segment
 WHERE transportation_mode = 'Rail' AND analysis_level = '3 Month - Segment') c
 ON c.region = UCASE(b.region) AND c.transportation_mode = a.mode AND c.segment = a.segment
 WHERE a.analysis_level IS NULL AND a.mode = 'Rail' AND a.freight_book_code IS NOT NULL
@@ -2759,6 +2759,38 @@ AND b.origination_location_id = a.origination_location_id AND b.destination_loca
 AND b.reference_destination_id = a.reference_destination_id AND b.product_id = a.product_id
 
 
- 
 
+### RAIL CAR COUNTS FOR RAIL FREIGHT BOOK ###
+CREATE VIEW prd_product_ctl.ibp_rail_car_counts_vw_1 AS
+SELECT c.region, c.ibp_mode, c.segment, c.freight_order_number, COUNT(*) as car_count FROM
+(SELECT a3.region, a3.ibp_mode, b.segment, a3.freight_order_number, a3.container_id_number FROM
+(SELECT a.*, 'NA' as region, a2.ibp_mode FROM dev_internal_ctl_truck.vw_nata_foida_mat a
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'SAP TM' AND ibp_mode = 'Rail') a2 
+ON a2.system_mode = a.transportation_mode
+WHERE a.departure_date > (SELECT date_add(now(), interval -3 months) as date_scope)
+AND a.item_category = 'Container') a3
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'SAP TM' AND segment <> '' ) b
+ON b.transportation_mode = a3.transportation_mode AND b.means_of_transport = a3.means_of_transport
+GROUP BY a3.region, a3.ibp_mode, b.segment, a3.freight_order_number, a3.container_id_number) c
+GROUP BY c.region, c.ibp_mode, c.segment, c.freight_order_number
+UNION ALL
+SELECT c.region, c.ibp_mode, c.segment, c.bol, SUM(rail_car_count) as car_count FROM
+(SELECT a3.region, a3.ibp_mode, b.segment, a3.bol, rail_car_count FROM
+(SELECT a.*, 'NA' as region, CAST(from_unixtime(CAST(a.ship_date/1000 as bigint)) AS TIMESTAMP) departure_date, a2.ibp_mode  FROM dev_internal_ctl_truck.nata_rstp_shipment_data_final_mat a
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_mode_mapping WHERE system = 'RSTP' AND ibp_mode = 'Rail') a2
+ON a2.system_mode = a.mode) a3
+INNER JOIN (SELECT * FROM prd_product_ctl.ibp_segment_mapping_vw WHERE active = 'Y' AND system = 'RSTP' AND segment <> '' ) b
+ON b.transportation_mode = a3.mode AND b.means_of_transport = a3.equip) c
+GROUP BY c.region, c.ibp_mode, c.segment, c.bol
+
+
+
+CREATE VIEW prd_product_ctl.ibp_rail_car_counts_vw_final AS
+SELECT region, ibp_mode, segment, AVG(car_count) as avg_car_count
+FROM prd_product_ctl.ibp_rail_car_counts_vw_1
+GROUP BY region, ibp_mode, segment
+
+
+
+####################### BACK TESTING ##########################################
 
