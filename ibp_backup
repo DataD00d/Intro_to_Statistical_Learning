@@ -3,7 +3,7 @@
 --DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 6 AND month(run_date) = 8
 
 ### ibp tablez ###
-SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_vw 
+SELECT * FROM prd_product_ctl.ibp_costs_backtesting_final_archive 
 
 SELECT * FROM prd_product_ctl.ibp_costs_final_archive 
 
@@ -141,7 +141,7 @@ a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profi
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
 (SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
-FROM prd_product_ctl_ibp_ask.md_transportation_lane 
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE mode IS NOT NULL
 AND product_id IS NOT NULL
 AND ( (origination_location_id IS NOT NULL AND reference_origination_id IS NOT NULL) OR (origination_city IS NOT NULL AND origination_state IS NOT NULL AND origination_zip IS NOT NULL AND origination_country IS NOT NULL) )
@@ -199,7 +199,7 @@ a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profi
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
 (SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE mode IS NOT NULL
 AND product_id IS NOT NULL
 AND ( (origination_location_id IS NOT NULL AND reference_origination_id IS NOT NULL) OR (origination_city IS NOT NULL AND origination_state IS NOT NULL AND origination_zip IS NOT NULL AND origination_country IS NOT NULL) )
@@ -1971,15 +1971,15 @@ ON c.transportation_mode = a.transportation_mode AND c.segment = a.segment AND c
 AND c.destination_location = a.destination_location AND c.analysis_level = a.analysis_level
 
 
-
+### NEEED TO RECREATE -> NEEED VALID ASK TO RECREATE ###
 ### ERROR LOGGING ASK ###
 CREATE VIEW prd_product_ctl.ibp_error_log_ask AS
 SELECT *, 'ERROR - NULL [mode] provided' as 'error_desc' 
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE mode IS NULL
 UNION ALL
 SELECT *, 'ERROR - NULL [product_id] provided' as 'error_desc' 
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE product_id IS NULL
 AND mode IS NOT NULL
 UNION ALL
@@ -2000,7 +2000,7 @@ WHERE mode IS NOT NULL AND product_id IS NOT NULL AND destination_location_posta
 AND destination_location_key = 'Not Found'
 UNION ALL
 SELECT *, 'ERROR - Insufficient Location Details provided' as 'error_desc' 
-FROM prd_product_ctl_ibp_ask.md_transportation_lane
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE Mode IS NOT NULL AND product_id IS NOT NULL AND
 ( ( (origination_location_id IS NULL OR reference_origination_id IS NULL) 
 AND (origination_city IS NULL OR origination_state IS NULL OR origination_zip IS NULL OR origination_country IS NULL) ) OR
@@ -2747,7 +2747,7 @@ CASE WHEN destination_location_id IS NULL THEN 'Not Provided' ELSE destination_l
 CASE WHEN reference_destination_id IS NULL THEN 'Not Provided' ELSE reference_destination_id END as reference_destination_id, 
 destination_city, destination_state, destination_zip, destination_country,
 CASE WHEN product_id IS NULL THEN 'Not Provided' ELSE product_id END as product_id, profit_center, internal_external
-FROM prd_product_ctl_ibp_ask.md_transportation_lane ) a
+FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw ) a
 LEFT JOIN
 (SELECT business_group, mode, origination_location_id, reference_origination_id, destination_location_id, reference_destination_id, product_id, 
 CASE WHEN calculation_method LIKE 'ERROR - No distance found for:%' THEN 'ERROR - No distance found' ELSE
@@ -2898,3 +2898,12 @@ PRIMARY KEY (business_group, mode, segment, period, freight_order_number, uom, c
 PARTITION BY HASH (business_group, mode, segment)
 PARTITIONS 2
 STORED AS KUDU
+
+
+
+### UPDATE TO PEANUT ASK ###
+### UNION NEW ASKS HERE ###
+### PEANUT ASK ###
+CREATE VIEW prd_product_ctl_ibp_ask.md_transportation_lane_vw AS
+SELECT * FROM prd_product_ctl_ibp_ask.md_transportation_lane_peanut_clean
+
