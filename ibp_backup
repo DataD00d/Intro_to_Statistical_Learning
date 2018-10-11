@@ -1,15 +1,23 @@
+### CHECK INCOMPLETE RESPONSE ### 
+select * from prd_product_ctl_ibp_ask.md_transportation_lane_vw
+where concat( UCASE(mode), origination_location_id, destination_location_id, product_id)
+    not in (
+        select concat( UCASE(mode), origination_location_id, destination_location_id, product_id)
+        from prd_product_ctl_ibp.ibp_costs_final_it
+    )
+
 ################## IBP PRODUCT BELOW ##################
 
---DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 6 AND month(run_date) = 8
+DELETE FROM prd_product_ctl.ibp_costs_final_archive WHERE day(run_date) = 25 AND month(run_date) = 9
 
 ### ibp tablez ###
 SELECT * FROM prd_product_ctl.ibp_costs_backtesting_final_archive 
 
 SELECT * FROM prd_product_ctl.ibp_costs_final_archive 
 
-SELECT * FROM prd_product_ctl_ibp.ibp_costs_final_it WHERE calculation_method LIKE 'ERROR - Invalid%'
+SELECT COUNT(*) FROM prd_product_ctl_ibp.ibp_costs_final_it WHERE calculation_method LIKE 'ERROR - Invalid%'
 
-SELECT COUNT(*) FROM prd_product_ctl_ibp_ask.md_transportation_lane WHERE destination_location_id IS NULL
+SELECT COUNT(*) FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw WHERE destination_location_id IS NULL
 
 SELECT error_desc, COUNT(*) FROM prd_product_ctl.ibp_error_log_ask GROUP By error_desc
 
@@ -62,7 +70,7 @@ SELECT * FROM prd_product_ctl.ibp_spillover_accessorials_wash_vw
 SELECT * FROM prd_product_ctl.ibp_rate_escalator_final ORDER BY segment, `month`
 
 ### MATERIALIZE IBP VIEWS ###
-INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_data_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_data_vw
+INSERT OVERWRITE TABLE prd_product_ctl.ibp_historical_data_vw_mat SELECT * FROM prd_product_ctl.ibp_historical_data_vw WHERE (source_location_key <> destination_location_key) AND radar = 0
 COMPUTE STATS  prd_product_ctl.ibp_historical_data_vw_mat
 
 INSERT OVERWRITE TABLE prd_product_ctl.ibp_product_location_vw_mat SELECT * FROM prd_product_ctl.ibp_product_location_vw
@@ -140,7 +148,8 @@ CASE WHEN a.destination_country IS NULL OR trim(a.destination_country) = '' THEN
 a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profit_center END as profit_center, 
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
-(SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
+(SELECT *, CASE WHEN business_group = 'CSST' THEN 
+CASE WHEN substr(origination_location_id,1,2) = 'SP' THEN origination_location_id ELSE reference_origination_id END ELSE origination_location_id END as origination_join
 FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE mode IS NOT NULL
 AND product_id IS NOT NULL
@@ -198,7 +207,8 @@ CASE WHEN a.destination_country IS NULL OR trim(a.destination_country) = '' THEN
 a.product_id, CASE WHEN a.profit_center IS NULL THEN 'Not Provided' ELSE a.profit_center END as profit_center, 
 CASE WHEN a.internal_external IS NULL THEN 'Not Provided' ELSE a.internal_external END as internal_external
 FROM 
-(SELECT *, CASE WHEN business_group = 'CSST' THEN reference_origination_id ELSE origination_location_id END as origination_join
+(SELECT *, CASE WHEN business_group = 'CSST' THEN 
+CASE WHEN substr(origination_location_id,1,2) = 'SP' THEN origination_location_id ELSE reference_origination_id END ELSE origination_location_id END as origination_join
 FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
 WHERE mode IS NOT NULL
 AND product_id IS NOT NULL
@@ -1971,7 +1981,7 @@ ON c.transportation_mode = a.transportation_mode AND c.segment = a.segment AND c
 AND c.destination_location = a.destination_location AND c.analysis_level = a.analysis_level
 
 
-### NEEED TO RECREATE -> NEEED VALID ASK TO RECREATE ###
+
 ### ERROR LOGGING ASK ###
 CREATE VIEW prd_product_ctl.ibp_error_log_ask AS
 SELECT *, 'ERROR - NULL [mode] provided' as 'error_desc' 
@@ -1996,8 +2006,16 @@ source_location_region, source_location_postal_code, source_location_country, de
 destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center,
 internal_external, 'ERROR - Destination Location Code not found' 
 FROM prd_product_ctl.ibp_ask_final_vw_2
-WHERE mode IS NOT NULL AND product_id IS NOT NULL AND destination_location_postal_code IS NULL
+WHERE mode IS NOT NULL AND product_id IS NOT NULL AND destination_location_postal_code = 'Not Found or Provided'
 AND destination_location_key = 'Not Found'
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city,
+source_location_region, source_location_postal_code, source_location_country, destination_location_id, reference_destination_id,
+destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country, product_id, profit_center,
+internal_external, 'ERROR - Source Location Code not found' 
+FROM prd_product_ctl.ibp_ask_final_vw_2
+WHERE mode IS NOT NULL AND product_id IS NOT NULL AND source_location_postal_code = 'Not Found or Provided'
+AND source_location_key = 'Not Found'
 UNION ALL
 SELECT *, 'ERROR - Insufficient Location Details provided' as 'error_desc' 
 FROM prd_product_ctl_ibp_ask.md_transportation_lane_vw
@@ -2012,7 +2030,7 @@ source_location_region, source_location_postal_code, source_location_country, de
 destination_location_city, destination_location_region, destination_location_postal_code, destination_location_country, 
 product_id, profit_center, internal_external, 'ERROR - Invalid [mode] - [product_id] pair provided' as 'error_desc' 
 FROM prd_product_ctl.ibp_ask_final_vw_3
-WHERE segment IS NULL 
+WHERE segment IS NULL
 
 
 
@@ -2036,6 +2054,28 @@ on b.commodity = a.freight_book_code AND b.origin_city = a.source_location_city 
 AND b.destination_city = a.destination_location_city AND b.destination_state = a.destination_location_region
 WHERE analysis_level IS NULL AND mode = 'Rail' AND freight_book_code IS NOT NULL) zz
 WHERE linehaul_est IS NULL
+GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region, 
+source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, destination_location_city, 
+destination_location_region, destination_location_postal_code, destination_location_country, product_id,
+profit_center, internal_external, freight_book_code
+
+
+### ERROR LOGGING RAIL FREIGHT BOOK STCC ###
+CREATE VIEW prd_product_ctl.ibp_error_log_rail_freight_book_stcc AS
+SELECT business_group, mode, origination_location_id, reference_origination_id, source_location_city as origination_city, 
+source_location_region as origination_state, source_location_postal_code as origination_zip, source_location_country as origination_country,
+destination_location_id, reference_destination_id, destination_location_city as destination_city, destination_location_region as destination_state, 
+destination_location_postal_code as destination_zip, destination_location_country as destination_country, product_id,
+profit_center, internal_external, 'ERROR - No freight book mapping assigned' as 'error_desc' FROM
+(SELECT a.business_group, a.mode, a.source_location_key, a.origination_location_id, a.reference_origination_id, a.source_location_city, a.source_location_region,
+a.source_location_postal_code, a.source_location_country, a.destination_location_key, a.destination_location_id, a.reference_destination_id, 
+a.destination_location_city, a.destination_location_region, a.destination_location_postal_code, a.destination_location_country, a.product_id,
+a.profit_center, a.internal_external, a.segment, a.freight_book_code, 'Rail Freight Book' as analysis_level, 1 as n, 'USD' as currency_code, 
+0 as linehaul_est, 0 as linehaul_spot_adj_est, 0 as fuel_est, 0 as wash_est, 0 as deadhead_est, 0 as admin_est, 0 as congestion_est, 0 as currency_est,
+0 as detention_destination_est, 0 as detention_source_est, 0 as discount_est, 0 as drayage_est, 0 as equipment_est, 0 as holiday_est, 0 as layover_est,
+0 as other_est, 0 as pallet_est, 0 as tolls_est, 0 as unloading_est, 0 as radar_est, 0 as tonu_est, 0 as switch_est, 0 as rider_est, 0 as stop_charges_est, 0 as storage_est
+FROM prd_product_ctl.ibp_ask_hist_11 a
+WHERE a.analysis_level IS NULL AND a.mode = 'Rail' AND a.freight_book_code IS NULL) zz
 GROUP BY business_group, mode, origination_location_id, reference_origination_id, source_location_city, source_location_region, 
 source_location_postal_code, source_location_country, destination_location_id, reference_destination_id, destination_location_city, 
 destination_location_region, destination_location_postal_code, destination_location_country, product_id,
@@ -2561,7 +2601,7 @@ SELECT * FROM prd_product_ctl.ibp_ask_hist_12_2
 
 ### UOM CONVERSIONS ###
 CREATE VIEW prd_product_ctl.ibp_ask_hist_13 AS
-SELECT * FROM prd_product_ctl.ibp_ask_hist_12_3
+SELECT * FROM prd_product_ctl.ibp_ask_hist_12_3_mat
 UNION ALL
 SELECT c.region, c.business_group, c.mode, c.source_location_key, c.origination_location_id, c.reference_origination_id, c.source_location_city,
 c.source_location_region, c.source_location_postal_code, c.source_location_country, c.destination_location_key, c.destination_location_id,
@@ -2571,7 +2611,7 @@ c.product_id, c.profit_center, c.internal_external, c.segment, c.freight_book_co
 c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est, c.equipment_est, c.holiday_est, c.layover_est, c.other_est,
 c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est 
 FROM
-(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3 a
+(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3_mat a
 LEFT JOIN prd_product_ctl.ibp_uom_conversions b
 ON b.from_uom = a.uom
 WHERE a.uom = 'LB') c
@@ -2584,7 +2624,7 @@ c.product_id, c.profit_center, c.internal_external, c.segment, c.freight_book_co
 c.detention_destination_est, c.detention_source_est, c.discount_est, c.drayage_est, c.equipment_est, c.holiday_est, c.layover_est, c.other_est,
 c.pallet_est, c.tolls_est, c.unloading_est, c.radar_est, c.tonu_est, c.switch_est, c.rider_est, c.stop_charges_est, c.storage_est 
 FROM
-(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3 a
+(SELECT a.*, b.to_uom, b.factor FROM prd_product_ctl.ibp_ask_hist_12_3_mat a
 LEFT JOIN prd_product_ctl.ibp_uom_conversions b
 ON b.from_uom = a.uom
 WHERE a.uom = 'GAL') c
@@ -2732,6 +2772,16 @@ error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 
 0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
 0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
 FROM prd_product_ctl.ibp_error_log_container_spillover
+UNION ALL
+SELECT business_group, mode, origination_location_id, reference_origination_id, origination_city, origination_state, origination_zip,
+origination_country, destination_location_id, reference_destination_id, destination_city, destination_state, destination_zip, destination_country,
+product_id, profit_center, internal_external, now() as run_date, 'N/A' as currency, 'N/A' as uom, 1 as period, NOW() as period_date,
+error_desc as analysis_level, 0 as total_cost_per_unit, 0 as linehaul_per_unit, 0 as linehaul_spot_adj_per_unit, 0 as fuel_per_unit,
+0 as wash_per_unit, 0 as deadhead_per_unit, 0 as admin_per_unit, 0 as congestion_per_unit, 0 as currency_per_unit, 
+0 as detention_destination_per_unit, 0 as detention_source_per_unit, 0 as discount_per_unit, 0 as drayage_per_unit, 0 as equipment_per_unit,
+0 as holiday_per_unit, 0 as layover_per_unit, 0 as other_per_unit, 0 as pallet_per_unit, 0 as tolls_per_unit, 0 as unloading_per_unit,
+0 as radar_per_unit, 0 as tonu_per_unit, 0 as switch_per_unit, 0 as rider_per_unit, 0 as stop_charges_per_unit, 0 as storage_per_unit
+FROM prd_product_ctl.ibp_error_log_rail_freight_book_stcc
 
 
 
@@ -2901,7 +2951,6 @@ STORED AS KUDU
 
 
 
-### UPDATE TO PEANUT ASK ###
 ### UNION NEW ASKS HERE ###
 ### PEANUT ASK ###
 CREATE VIEW prd_product_ctl_ibp_ask.md_transportation_lane_vw AS
