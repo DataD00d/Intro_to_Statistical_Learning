@@ -2956,3 +2956,15 @@ STORED AS KUDU
 CREATE VIEW prd_product_ctl_ibp_ask.md_transportation_lane_vw AS
 SELECT * FROM prd_product_ctl_ibp_ask.md_transportation_lane_peanut_clean
 
+
+
+### Tableau Archive View ###
+CREATE VIEW prd_product_ctl.ibp_costs_final_archive_tableau_vw AS
+SELECT * FROM prd_product_ctl.ibp_costs_final_archive
+WHERE (run_date < NOW() AND run_date > DATE_ADD(now(), INTERVAL -1 Days) )
+OR (run_date < DATE_ADD(NOW(), INTERVAL -7 Days) AND run_date > DATE_ADD(now(), INTERVAL -8 Days) )
+OR (run_date < DATE_ADD(NOW(), INTERVAL -14 Days) AND run_date > DATE_ADD(now(), INTERVAL -15 Days) )
+OR(run_date < DATE_ADD(NOW(), INTERVAL -21 Days) AND run_date > DATE_ADD(now(), INTERVAL -22 Days) )
+OR(run_date < DATE_ADD(NOW(), INTERVAL -28 Days) AND run_date > DATE_ADD(now(), INTERVAL -29 Days) )
+
+SELECT COUNT(*) FROM prd_product_ctl.ibp_costs_final_archive
