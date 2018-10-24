@@ -1,0 +1,109 @@
+Sub ArchiveOrDeleteResults()
+
+'connection selection
+'Data Source=AMSSQL018DV;Initial Catalog=GroupAnalysis;Provider=SQLNCLI11.1;Integrated Security=SSPI;Auto Translate=FALSE;
+
+'establish sql connection
+Application.StatusBar = "Connecting to the SQL database..."
+fileDb = Range("ConnectionString_Selection")
+        Set cnnct = New ADODB.Connection
+        cnnct.Open fileDb
+        cnnct.CommandTimeout = 480
+        
+'Set Ids for Run
+Sheets("Selections").Calculate
+RoRAC = Range("ResultAction_Id")
+
+If Range("Result_Action") = "Delete" Then
+
+    answer = MsgBox("Are you sure you want to DELETE this result set: " & Range("Result_Data"), vbYesNo + vbQuestion)
+    If answer = vbNo Then
+        End
+    End If
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[StandAloneRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[CoVaRRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[MVaRRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[RoRAC_Results] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[RoRAC_ReportingResults] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+End If
+
+If Range("Result_Action") = "Archive" Then
+
+    answer = MsgBox("Are you sure you want to ARCHIVE this result set: " & Range("Result_Data") & ". NOTE - Once Archived, Trial data will be deleted from Group Analysis DB leaving only the results.", vbYesNo + vbQuestion)
+    If answer = vbNo Then
+        End
+    End If
+    
+    'create Stand Alone file
+    Set NewBook = Workbooks.Add(xlWBATWorksheet)
+   
+    ActiveSheet.Name = "Level1"
+    
+    'loop through data and output to excel
+    
+    'Save WB
+    NewBook.SaveAs Filename:=Range("ArchiveFolder") & "\" & Range("Result_Data") & "_" & "StandAlone.xlsx"
+    NewBook.Close
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[StandAloneRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    
+    'create CoVaR file
+    Set NewBook = Workbooks.Add(xlWBATWorksheet)
+   
+    ActiveSheet.Name = "Level1"
+    
+    'loop through data and output to excel
+    
+    'Save WB
+    NewBook.SaveAs Filename:=Range("ArchiveFolder") & "\" & Range("Result_Data") & "_" & "CoVaR.xlsx"
+    NewBook.Close
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[CoVaRRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+    
+    'create MVaR file
+    Set NewBook = Workbooks.Add(xlWBATWorksheet)
+   
+    ActiveSheet.Name = "Level1"
+    
+    'loop through data and output to excel
+    
+    'Save WB
+    NewBook.SaveAs Filename:=Range("ArchiveFolder") & "\" & Range("Result_Data") & "_" & "MVaR.xlsx"
+    NewBook.Close
+    
+    sqlCode = "Delete FROM [GroupAnalysis].[dbo].[MVaRRanks] WHERE [Result_Id] = '" & RoRAC & "'"
+    cnnct.Execute (sqlCode)
+    
+End If
+
+'Set RoRAC Selections
+Range("RoRAC_List").ClearContents
+Range("RoRACId_List").ClearContents
+        
+    sql_Code = "SELECT [Result_Desc], [Result_Id] FROM [GroupAnalysis].[dbo].[RoRAC_Results] GROUP BY [Result_Desc], [Result_Id] ORDER BY [Result_Id] ASC"
+    Set DataKey = cnnct.Execute(sql_Code)
+    Sheets("Selections").Range("Q4").CopyFromRecordset DataKey
+    
+    Set rngRef = Sheets("Selections").Range("Q:Q")
+    numRows = Application.WorksheetFunction.CountA(rngRef) - 1
+    ActiveWorkbook.Names("RoRAC_List").RefersTo = "=Selections!$Q$4:$Q$" & max((numRows + 3), 4)
+    
+    Set rngRef = Sheets("Selections").Range("R:R")
+    numRows = Application.WorksheetFunction.CountA(rngRef) - 1
+    ActiveWorkbook.Names("RoRACId_List").RefersTo = "=Selections!$R$4:$R$" & max((numRows + 3), 4)
+
+End Sub
